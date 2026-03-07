@@ -17,6 +17,10 @@ int main(int argc, char *argv[])
 
     init_openssl();
     SSL_CTX *ctx = setup_ssl_context();
+    struct sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr);
+    int clientfd;
+    SSL *ssl;
 
     printf("Avvio del server sulla porta %d...\n", port);
 
@@ -66,15 +70,28 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    
     //accettazione delle connessioni
-    if(accept(sockfd, NULL, NULL) < 0){
-        perror("Accepting error");
-        exit(EXIT_FAILURE);
-    }else{
-        printf("Client connected successfully \n");
-    } 
+    while(1){
+        clientfd = accept(sockfd, (struct sockaddr *)&client_addr, &client_len);
+        if(clientfd < 0){
+            perror("Accept error");
+            continue;
+        }
+        printf("Connection accepted from %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+        ssl = SSL_new(ctx);
+        SSL_set_fd(ssl, clientfd);
+        if(SSL_accept(ssl) <= 0){
+            perror("SSL accept error");
+            ERR_print_errors_fp(stderr);
+            SSL_free(ssl);
+            close(clientfd);
+            continue;
+        }
+        printf("SSL/TLS connection established with %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
 
+        //qui dovrei poi ricevere il cookie dal client
+
+    }
 
     //per ogni accettazione viene creato un Oggetto SSL (SSL *ssl), si attacca il file descriptor e si esegue SSL_accept() per stabilire la connessione SSL/TLS.
 
