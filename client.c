@@ -10,8 +10,8 @@
 SSL_CTX *setup_ssl_context();
 int initialize_connection(const char *server_ip, int port);
 int do_single_request(const char *server_ip, int port, SSL_CTX *ctx); 
-void sendData(const char *server_ip, int port, SSL_CTX *ctx); // funzione per mandare dati al server
-int sendCookie();
+void sendRequests(const char *server_ip, int port, SSL_CTX *ctx); // funzione per mandare dati al server
+int sendCookie(SSL *ssl);
 
 int main(int argc, char *argv[]) {
   // indirizzo del server
@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  sendData("127.0.0.1", 5000, ctx); 
+  sendRequests("127.0.0.1", 5000, ctx); 
 
   /*
   SSL_shutdown(ssl);
@@ -57,6 +57,7 @@ SSL_CTX *setup_ssl_context() {
   return ctx;
 }
 
+//function to initialize the connections, SSL and TCP
 int initialize_connection(const char *server_ip, int port) {
   struct sockaddr_in server_addr;
 
@@ -70,8 +71,7 @@ int initialize_connection(const char *server_ip, int port) {
     exit(EXIT_FAILURE);
   }
 
-  if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) <
-      0) {
+  if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
     perror("Connection error");
     exit(EXIT_FAILURE);
   }
@@ -102,9 +102,12 @@ int do_single_request(const char *server_ip, int port, SSL_CTX *ctx){
     exit(EXIT_FAILURE);
   }
 
+  //send the cookie
+  //sendData();
+
   ssize_t n = SSL_read(ssl, NULL, 0);
 
-  if(n > 0){
+  if (n > 0){
     result = 1;
     buffer[n] = '\0';
   }else{
@@ -118,7 +121,7 @@ int do_single_request(const char *server_ip, int port, SSL_CTX *ctx){
 }
 
 //function to send data to the server in a loop, calling do_single_request for each request
-void sendData(const char *server_ip, int port, SSL_CTX *ctx) {
+void sendRequests(const char *server_ip, int port, SSL_CTX *ctx) {
 
   int sockfd;
   SSL *ssl;
@@ -130,7 +133,8 @@ void sendData(const char *server_ip, int port, SSL_CTX *ctx) {
 
 }
 
-int sendCookie() {
+//function to send and receive data
+int sendCookie(SSL *ssl) {
 
   int result = -1;
 
