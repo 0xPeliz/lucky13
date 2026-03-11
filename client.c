@@ -7,22 +7,29 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+
 SSL_CTX *setup_ssl_context();
 int initialize_connection(const char *server_ip, int port);
 int do_single_request(const char *server_ip, int port, SSL_CTX *ctx); 
 void sendRequests(const char *server_ip, int port, SSL_CTX *ctx); // funzione per mandare dati al server
 int sendCookie(SSL *ssl);
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[]) 
+{
   // indirizzo del server
-  /*
-  if(argc != 2){
+  char *server_ip;
+  int port;
+
+  if(argc != 3){
       perror("Missing server address argument");
       exit(EXIT_FAILURE);
   }
 
-  char *server_ip = argv[1];
-  */
+  server_ip = argv[1];
+  port = atoi(argv[2]);
+
+  printf("Ip server: %s\n", server_ip);
+  printf("Port: %d\n", port);
 
   SSL_CTX *ctx = setup_ssl_context();
 
@@ -31,7 +38,7 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  sendRequests("127.0.0.1", 5000, ctx); 
+  sendRequests(server_ip, port, ctx);
 
   /*
   SSL_shutdown(ssl);
@@ -42,6 +49,7 @@ int main(int argc, char *argv[]) {
   return 0;
 }
 
+//functiom to initialize SSL context
 SSL_CTX *setup_ssl_context() {
   SSL_CTX *ctx = SSL_CTX_new(TLS_client_method());
 
