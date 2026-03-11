@@ -111,13 +111,14 @@ int do_single_request(const char *server_ip, int port, SSL_CTX *ctx){
   }
 
   //send the cookie
-  //sendData();
+  //sendCookie(ssl);
 
-  ssize_t n = SSL_read(ssl, NULL, 0);
+  ssize_t n = SSL_read(ssl, buffer, sizeof(buffer) - 1);
 
   if (n > 0){
     result = 1;
     buffer[n] = '\0';
+    printf("Server response: %s\n", buffer);
   }else{
 
   }
