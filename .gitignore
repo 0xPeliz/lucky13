@@ -1,0 +1,12 @@
+# Eseguibili (aggiungi qui i nomi dei tuoi file compilati)
+client
+server
+proxy
+*.o
+*.out
+
+# Certificati e Chiavi (CRITICO: non committare mai questi file)
+*.key
+*.crt
+*.pem
+*.csr
