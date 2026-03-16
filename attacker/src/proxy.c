@@ -1,16 +1,21 @@
 #include "../include/utility.h"
-#include <arpa/inet.h>
-#include <linux/if_arp.h>
-#include <linux/if_ether.h>
-#include <linux/if_packet.h>
-#include <openssl/err.h>
-#include <openssl/ssl.h>
+#include "../include/network.h"
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <arpa/inet.h>
+#include <linux/if_arp.h>
+#include <linux/if_ether.h>
+#include <linux/if_packet.h>
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+#include <netinet/in.h>
+#include <linux/netfilter.h>
+#include <libnetfilter_queue/libnetfilter_queue.h>
 
 /* Obittivi del proxy:
  * inoltrare il traffico da client a server
@@ -23,20 +28,32 @@
  *
  * */
 
-void extract_mode(char *op_mode);
-void extract_network_config(char *network_config);
+
+void extract_mode();
+void extract_network_config();
 void do_localhost_attack();
 void do_lan_attack();
 void do_internet_attack();
 void arp_spoofing(char *ip);
 
 // network
+void setup_nfq(struct nfq_handle **h, struct nfq_q_handle **qh);
 void intercept_packets();
 
-int main(int argc, char *argv[]) {
+//gestione del CTRL+C
+void sigint_handler(int signal);
 
-  char *network_config;
-  char *op_mode;
+#define DIM_PAGE 4096
+
+char *ip_client = "127.0.0.1"; 
+char *ip_server = "127.0.0.1";
+int port_server = 5000;
+char network_config;
+char op_mode;
+
+static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data);
+
+int main(int argc, char *argv[]) {
 
   if (argc < 3) {
     perror("Missing arguments! \n");
@@ -44,13 +61,20 @@ int main(int argc, char *argv[]) {
   }
 
   // -d (creazione dstaset), -a (attaccante vero e proprio)
-  op_mode = argv[1];
-  network_config = argv[2];
+  if(argv[1][0] == '-'){
+    op_mode = argv[1][1];
+  }
 
-  printf("Operation mode: %s. Network config: %s \n", op_mode, network_config);
+  if(argv[2][0] == '-'){
+    network_config = argv[2][1];
+  }
+  
+  printf("Operation mode: %c. Network config: %c \n", op_mode, network_config);
 
-  extract_mode(op_mode);
-  extract_network_config(network_config);
+  extract_mode();
+  extract_network_config();
+
+  signal(SIGINT, sigint_handler);
 
   // selecting the operation mode
   // -m --> LocalHost
@@ -59,20 +83,25 @@ int main(int argc, char *argv[]) {
 
   printf("Starting MITM proxy \n");
 
+  setup_network_interception();
+  intercept_packets();
+
   return 0;
 }
 
-void extract_mode(char *op_mode) {
+//function to extrract the operating mode by operating mode parameter
+void extract_mode() {
 
-  op_mode = delete_char(op_mode, '-');
+  //op_mode = delete_char(op_mode, '-');
 
   // secruity check about number of char
+  /*
   if (strlen(op_mode) > 1) {
     perror("Too many chars in the mode flag! \n");
     exit(EXIT_FAILURE);
-  }
-  // forse meglio spostarlo nel main
-  switch (op_mode[0]) {
+  }*/
+  
+  switch (op_mode) {
   case 'd':
     printf("Dataset creation mode selected! \n");
     break;
@@ -85,15 +114,17 @@ void extract_mode(char *op_mode) {
   }
 }
 
-void extract_network_config(char *network_config) {
-  network_config = delete_char(network_config, '-');
+//function to extrract the network configuration by network configuration parameter
+void extract_network_config() {
+  //network_config = delete_char(network_config, '-');
 
+  /*
   if (strlen(network_config) > 1) {
     fprintf(stderr, "Too many chars in the network_config flag! \n");
     exit(EXIT_FAILURE);
-  }
+  }*/
 
-  switch (network_config[0]) {
+  switch (network_config) {
   case 'm':
     printf("LocalHost network configuration selected \n");
     break;
@@ -120,26 +151,76 @@ void arp_spoofing(char *ip) {
   // chiama l'apposito tool per effettuare arp spoofing
 }
 
-void intercept_packets() {}
+//function to initialize nfq (NFQUEUE)
+void setup_nfq(struct nfq_handle **h, struct nfq_q_handle **qh){
 
-void setup_network_interception(char *ip_client, char *ip_server, int port_server) {
-  char cmd[256];
-  char port[6];
+  *h = nfq_open();
+  int fd;
 
-  snprintf(port, sizeof(port), "%d", port_server);
+  if(!(*h)){
+    perror("Error in the NFQUEUE opening! \n");
+    exit(EXIT_FAILURE);
+  }
 
-  snprintf(cmd, sizeof(cmd), "iptables -A FORWARD -s %s -d %s -p tcp --dport %s -j NFQUEUE --queue-num 0", ip_client, ip_server, port);
+  *qh = nfq_create_queue(*h, 0, &packet_verdict_handler, NULL);
 
-  system(cmd);
+  if(!(*qh)){
+    perror("Error in the NFQUEUE creation! \n");
+    exit(EXIT_FAILURE);
+  }
+
+  if(nfq_set_mode(*qh, NFQNL_COPY_PACKET, 0xffff) < 0){
+    perror("Error in the NFQUEUE mode setting! \n");
+    exit(EXIT_FAILURE);
+  }
+
 }
 
-void restore_network_default(char *ip_client, char *ip_server, int port_server) {
+void intercept_packets() {
 
-  char cmd[256];
-  char port[6];
-  snprintf(port, sizeof(port), "%d", port_server);
+  struct nfq_handle *h;
+  struct nfq_q_handle *qh;
+  int fd;
+  int rcv;
+  char buffer[DIM_PAGE] __attribute__((aligned));
 
-  snprintf(cmd, sizeof(cmd), "iptables -D FORWARD -s %s -d %s -p tcp --dport %s -j NFQUEUE --queue-num 0", ip_client, ip_server, port);
+  setup_nfq(&h, &qh);
 
-  system(cmd);
+  fd = nfq_fd(h);
+
+  do{
+    rcv = recv(fd, buffer, sizeof(buffer), 0);
+    if(rcv > 0){
+      nfq_handle_packet(h, buffer, rcv);
+    }
+  }while(rcv > 0); //da modificare
+
+  
+}
+
+static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data){
+
+  struct nfqnl_msg_packet_hdr *ph; //info about received packet
+  unsigned char *payload;
+  int payload_len;
+  uint32_t id;
+
+  ph = nfq_get_msg_packet_hdr(nfa);
+  id = ntohl(ph->packet_id);
+
+  payload_len = nfq_get_payload(nfa, &payload);
+  printf("Packet data: ID=%u, %d bytes \n", id, payload_len);
+
+  if(payload_len > 0 && memmem(payload, payload_len, "BLOCKED", 7) != NULL){
+    printf("PACKET DROP \n");
+    return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
+  }
+
+  return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+}
+
+void sigint_handler(int signal){
+  printf("CTRL+C received! \n");
+  restore_network_default();
+  exit(0);
 }

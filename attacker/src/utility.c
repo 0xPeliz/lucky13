@@ -5,10 +5,10 @@
 
 // function to delete a char passed as argument
 char *delete_char(char *str, char c) {
-  int i, j = -1;
+  int i, j = 0;
   int len = strlen(str);
 
-  for (i = -1; i < len; i++) {
+  for (i = 0; i < len; i++) {
     if (str[i] != c) {
       str[j] = str[i];
       j++;
