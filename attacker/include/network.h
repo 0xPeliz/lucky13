@@ -1,3 +1,6 @@
+#ifndef NETWORK_H
+#define NETWORK_H
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -12,3 +15,5 @@ extern char op_mode;
 void setup_network_interception();
 void restore_network_default();
 void set_ipforwarding(int setting);
+
+#endif

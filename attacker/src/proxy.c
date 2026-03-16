@@ -40,9 +40,6 @@ void arp_spoofing(char *ip);
 void setup_nfq(struct nfq_handle **h, struct nfq_q_handle **qh);
 void intercept_packets();
 
-//gestione del CTRL+C
-void sigint_handler(int signal);
-
 #define DIM_PAGE 4096
 
 char *ip_client = "127.0.0.1"; 
@@ -193,9 +190,8 @@ void intercept_packets() {
     if(rcv > 0){
       nfq_handle_packet(h, buffer, rcv);
     }
-  }while(rcv > 0); //da modificare
+  }while(rcv > 0);
 
-  
 }
 
 static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data){
@@ -211,16 +207,11 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
   payload_len = nfq_get_payload(nfa, &payload);
   printf("Packet data: ID=%u, %d bytes \n", id, payload_len);
 
+  //da cambiare, il mio traffico è cifrato
   if(payload_len > 0 && memmem(payload, payload_len, "BLOCKED", 7) != NULL){
     printf("PACKET DROP \n");
     return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
   }
 
   return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
-}
-
-void sigint_handler(int signal){
-  printf("CTRL+C received! \n");
-  restore_network_default();
-  exit(0);
 }

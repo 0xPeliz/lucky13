@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include "../include/network.h"
+#include "../include/utility.h"
 
 // function to delete a char passed as argument
 char *delete_char(char *str, char c) {
@@ -19,3 +21,11 @@ char *delete_char(char *str, char c) {
 
   return str;
 }
+
+
+void sigint_handler(int signal){
+  printf("CTRL+C received! \n");
+  restore_network_default();
+  exit(0);
+}
+

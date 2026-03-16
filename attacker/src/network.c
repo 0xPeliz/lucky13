@@ -1,5 +1,6 @@
 #include "../include/network.h"
 
+//function to set a personalized iptables configuration on the client to receive packets
 void setup_network_interception() {
   char cmd[256];
   char port[6];
@@ -14,11 +15,9 @@ void setup_network_interception() {
   }
 
   system(cmd);
-
-  printf("Sono alla fine della funzione setup_network_interception \n");
 }
 
-
+//function to restore the default settings of iptables
 void restore_network_default() {
 
   char cmd[256];
@@ -33,7 +32,6 @@ void restore_network_default() {
   }
 
   system(cmd);
-  printf("Sono alla fine della funzione restore_network_default \n");
 }
 
 //function to set IP forwarding, necessary for MITM proxy outiside localhost
