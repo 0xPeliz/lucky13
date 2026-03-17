@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include "../include/utility.h"
 #include "../include/network.h"
 #include <signal.h>
@@ -29,7 +30,6 @@
  * dalla mia ma gestito da switc
  *
  * */
-
 
 void extract_mode();
 void extract_network_config();
@@ -203,10 +203,11 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
   unsigned char *payload;
   int payload_len;
   uint32_t id;
-  /*
-  struct iphdr *iph = ((struct iphdr *) payload);
-  unsigned int iphdr_size = iph->ihl << 2;
-  struct tcphdr *tcp_header;*/
+  
+  struct iphdr *iph;
+
+  unsigned int iphdr_size;
+  struct tcphdr *tcp_header;
 
   ph = nfq_get_msg_packet_hdr(nfa);
   id = ntohl(ph->packet_id);
@@ -216,6 +217,9 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
   payload_len = nfq_get_payload(nfa, &payload);
   printf("Packet data: ID=%u, %d bytes \n", id, payload_len);
 
+  iph = ((struct iphdr *)payload);
+  iphdr_size = iph->ihl << 2; 
+
  /*
   for(int i=0; i<payload_len; i++){
     printf("%02x ", payload[i]);
@@ -223,19 +227,16 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
 
   printf("Iniziale pyaload: %02x \n", payload[0]);
 
-  /*
   if(iph->protocol == IPPROTO_TCP){
     tcp_header = (struct tcphdr *)(payload + iphdr_size);
     printf("TCP packet detected! Source port: %d, Destination port: %d \n", ntohs(tcp_header->source), ntohs(tcp_header->dest));
   }
-    */
 
-  /*
+  
   if (payload_len >= 5 && payload[0] == 0x16 && payload[1] == 0x03 && (payload[2] == 0x01 || payload[2] == 0x02 || payload[2] == 0x03)) {
     printf("SSL/TLS handshake packet detected! \n");
     return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
-  } 
-    */
+  }
 
   //controllo se sono pacchetti che appartengono al three way handshake o all'instauramento della connessione SSL, in questo caso li accetto tutti
 
