@@ -12,45 +12,19 @@
 
 void init_openssl();
 SSL_CTX *setup_ssl_context();
+void handle_connections(int sockfd, SSL *ssl, SSL_CTX *ctx);
+void handle_client(SSL *ssl, struct sockaddr_in client_addr);
 
 int main(int argc, char *argv[]) {
 
   init_openssl();
   SSL_CTX *ctx = setup_ssl_context();
-  struct sockaddr_in client_addr;
-  socklen_t client_len = sizeof(client_addr);
+
   int clientfd;
   SSL *ssl;
   char buffer[DIM_BUFFER];
 
   printf("Avvio del server sulla porta %d...\n", port);
-
-  if (ctx == NULL) {
-    perror("SSL context initialization error");
-    exit(EXIT_FAILURE);
-  }
-
-  if (SSL_CTX_use_certificate_file(ctx, "server.crt", SSL_FILETYPE_PEM) <= 0) {
-    perror("Certificate file error");
-    ERR_print_errors_fp(stderr);
-    SSL_CTX_free(ctx);
-    exit(EXIT_FAILURE);
-  }
-
-  if (SSL_CTX_use_PrivateKey_file(ctx, "server.key", SSL_FILETYPE_PEM) <= 0) {
-    perror("Private key file error");
-    ERR_print_errors_fp(stderr);
-    SSL_CTX_free(ctx);
-    exit(EXIT_FAILURE);
-  }
-
-  if (!SSL_CTX_check_private_key(ctx)) {
-    perror("Private key does not match the certificate public key");
-    SSL_CTX_free(ctx);
-    exit(EXIT_FAILURE);
-  }
-
-  printf("SSL context initialized successfully \n");
 
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -70,35 +44,8 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  // accettazione delle connessioni
-  while (1) {
-    clientfd = accept(sockfd, (struct sockaddr *)&client_addr, &client_len);
-    if (clientfd < 0) {
-      perror("Accept error");
-      continue;
-    }
-    printf("Connection accepted from %s:%d\n", inet_ntoa(client_addr.sin_addr),
-           ntohs(client_addr.sin_port));
-    ssl = SSL_new(ctx);
-    SSL_set_fd(ssl, clientfd);
-    if (SSL_accept(ssl) <= 0) {
-      perror("SSL accept error");
-      ERR_print_errors_fp(stderr);
-      SSL_free(ssl);
-      close(clientfd);
-      continue;
-    }
-    printf("SSL/TLS connection established with %s:%d\n",
-           inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
-
-    // SSL_read(ssl, buffer, DIM_BUFFER);
-
-    const char *response = "Hello, World!";
-
-    SSL_write(ssl, response, strlen(response));
-
-    // qui dovrei poi ricevere il cookie dal client
-  }
+  handle_connections(sockfd, ssl, ctx);
+  
 
   // per ogni accettazione viene creato un Oggetto SSL (SSL *ssl), si attacca il
   // file descriptor e si esegue SSL_accept() per stabilire la connessione
@@ -137,5 +84,69 @@ SSL_CTX *setup_ssl_context() {
 
   SSL_CTX_set_options(ctx, SSL_OP_NO_TICKET);
 
+  if (ctx == NULL) {
+    perror("SSL context initialization error");
+    exit(EXIT_FAILURE);
+  }
+
+  if (SSL_CTX_use_certificate_file(ctx, "server.crt", SSL_FILETYPE_PEM) <= 0) {
+    perror("Certificate file error");
+    ERR_print_errors_fp(stderr);
+    SSL_CTX_free(ctx);
+    exit(EXIT_FAILURE);
+  }
+
+  if (SSL_CTX_use_PrivateKey_file(ctx, "server.key", SSL_FILETYPE_PEM) <= 0) {
+    perror("Private key file error");
+    ERR_print_errors_fp(stderr);
+    SSL_CTX_free(ctx);
+    exit(EXIT_FAILURE);
+  }
+
+  if (!SSL_CTX_check_private_key(ctx)) {
+    perror("Private key does not match the certificate public key");
+    SSL_CTX_free(ctx);
+    exit(EXIT_FAILURE);
+  }
+
+   printf("SSL context initialized successfully \n");
+
   return ctx;
+}
+
+//function to listen for incoming connections
+void handle_connections(int sockfd, SSL *ssl, SSL_CTX *ctx) {
+
+  int clientfd;
+  struct sockaddr_in client_addr;
+  socklen_t client_len = sizeof(client_addr);
+
+  while (1) {
+    clientfd = accept(sockfd, (struct sockaddr *)&client_addr, &client_len);
+    if (clientfd < 0) {
+      perror("Accept error");
+      continue;
+    }
+
+    printf("Connection accepted from %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+    ssl = SSL_new(ctx);
+    SSL_set_fd(ssl, clientfd);
+    if (SSL_accept(ssl) <= 0) {
+      perror("SSL accept error");
+      ERR_print_errors_fp(stderr);
+      SSL_free(ssl);
+      close(clientfd);
+      continue;
+    }
+    printf("SSL/TLS connection established with %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+
+
+    // SSL_read(ssl, buffer, DIM_BUFFER);
+
+    const char *response = "Server received your request";
+
+    SSL_write(ssl, response, strlen(response));
+
+  }
+
 }
