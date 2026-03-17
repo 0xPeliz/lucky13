@@ -231,16 +231,15 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
     tcp_header = (struct tcphdr *)(payload + iphdr_size);
     printf("TCP packet detected! Source port: %d, Destination port: %d \n", ntohs(tcp_header->source), ntohs(tcp_header->dest));
   }
-
   
+  //payload contiene il pacchetto raw grezzo a partire dall'header IP in su (devo quindi valutare la parte applicativa, che si trova dopo tcp)
   if (payload_len >= 5 && payload[0] == 0x16 && payload[1] == 0x03 && (payload[2] == 0x01 || payload[2] == 0x02 || payload[2] == 0x03)) {
     printf("SSL/TLS handshake packet detected! \n");
     return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
   }
 
-  //controllo se sono pacchetti che appartengono al three way handshake o all'instauramento della connessione SSL, in questo caso li accetto tutti
-
-  //controllo se sono pacchetti che appartengono alla comunicazione tra client e server, in questo caso modifico il byte, spedisco al server e faccio partire il timer
+  //se il pacchetto non appartiene ne al 3 way handshake ne all'instauramento della connessione SSL, allora altero il byte della data posizione e di un dato valore
+  //modify_packet_byte();
 
   if(payload_len > 0 && memmem(payload, payload_len, "BLOCKED", 7) != NULL){
     printf("PACKET DROP \n");

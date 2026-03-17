@@ -95,7 +95,6 @@ int do_single_request(const char *server_ip, int port, SSL_CTX *ctx){
   int sockfd = initialize_connection(server_ip, port);
   SSL *ssl = SSL_new(ctx);
 
-
   if (ssl == NULL) {
     perror("SSL initialization error");
     exit(EXIT_FAILURE);
@@ -110,8 +109,9 @@ int do_single_request(const char *server_ip, int port, SSL_CTX *ctx){
     exit(EXIT_FAILURE);
   }
 
-  //send the cookie
-  //sendCookie(ssl);
+  const char *cookie_payload = "COOKIE=cookie_super_segreto5678901234";
+
+  SSL_write(ssl, cookie_payload, strlen(cookie_payload));
 
   ssize_t n = SSL_read(ssl, buffer, sizeof(buffer) - 1);
 
@@ -120,7 +120,7 @@ int do_single_request(const char *server_ip, int port, SSL_CTX *ctx){
     buffer[n] = '\0';
     printf("Server response: %s\n", buffer);
   }else{
-
+    perror("SSL read error");
   }
 
   SSL_free(ssl);
@@ -135,19 +135,11 @@ void sendRequests(const char *server_ip, int port, SSL_CTX *ctx) {
   int sockfd;
   SSL *ssl;
   char buffer[1024];
+  int i = 0;
 
-  while (1) {
+  while (i < 1) {
     do_single_request(server_ip, port, ctx);
+    i++;
   }
 
-}
-
-//function to send and receive data
-int sendCookie(SSL *ssl) {
-
-  int result = -1;
-
-  // va prevista la codifica in base64 del cookie e la generazione casuale di
-
-  return result;
 }

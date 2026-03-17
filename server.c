@@ -23,10 +23,13 @@ int main(int argc, char *argv[]) {
   int clientfd;
   SSL *ssl;
   char buffer[DIM_BUFFER];
+  int opt = 1; //to force the reuse of the address and avoid "Address already in use" error
 
   printf("Avvio del server sulla porta %d...\n", port);
 
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+  setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
   struct sockaddr_in server_addr;
   memset(&server_addr, 0, sizeof(server_addr));
@@ -120,6 +123,7 @@ void handle_connections(int sockfd, SSL *ssl, SSL_CTX *ctx) {
   int clientfd;
   struct sockaddr_in client_addr;
   socklen_t client_len = sizeof(client_addr);
+  char buffer[DIM_BUFFER];
 
   while (1) {
     clientfd = accept(sockfd, (struct sockaddr *)&client_addr, &client_len);
@@ -140,13 +144,20 @@ void handle_connections(int sockfd, SSL *ssl, SSL_CTX *ctx) {
     }
     printf("SSL/TLS connection established with %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
 
-
-    // SSL_read(ssl, buffer, DIM_BUFFER);
+    
+    ssize_t n = SSL_read(ssl, buffer, DIM_BUFFER);
+    if(n > 0){
+      buffer[n] = '\0';
+    }
+    printf("Received request: %s\n", buffer);
 
     const char *response = "Server received your request";
 
     SSL_write(ssl, response, strlen(response));
 
+    SSL_shutdown(ssl);
+    close(clientfd);
+    SSL_free(ssl);
   }
 
 }
