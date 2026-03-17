@@ -14,6 +14,8 @@
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 #include <netinet/in.h>
+#include <netinet/ip.h>
+#include <netinet/tcp.h>
 #include <linux/netfilter.h>
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
@@ -173,6 +175,7 @@ void setup_nfq(struct nfq_handle **h, struct nfq_q_handle **qh){
 
 }
 
+//forse da spostare in network.c
 void intercept_packets() {
 
   struct nfq_handle *h;
@@ -200,14 +203,44 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
   unsigned char *payload;
   int payload_len;
   uint32_t id;
+  /*
+  struct iphdr *iph = ((struct iphdr *) payload);
+  unsigned int iphdr_size = iph->ihl << 2;
+  struct tcphdr *tcp_header;*/
 
   ph = nfq_get_msg_packet_hdr(nfa);
   id = ntohl(ph->packet_id);
 
+  //controllo se sono pacchetti del three way handshake, non hanno payload
+
   payload_len = nfq_get_payload(nfa, &payload);
   printf("Packet data: ID=%u, %d bytes \n", id, payload_len);
 
-  //da cambiare, il mio traffico è cifrato
+ /*
+  for(int i=0; i<payload_len; i++){
+    printf("%02x ", payload[i]);
+  } */
+
+  printf("Iniziale pyaload: %02x \n", payload[0]);
+
+  /*
+  if(iph->protocol == IPPROTO_TCP){
+    tcp_header = (struct tcphdr *)(payload + iphdr_size);
+    printf("TCP packet detected! Source port: %d, Destination port: %d \n", ntohs(tcp_header->source), ntohs(tcp_header->dest));
+  }
+    */
+
+  /*
+  if (payload_len >= 5 && payload[0] == 0x16 && payload[1] == 0x03 && (payload[2] == 0x01 || payload[2] == 0x02 || payload[2] == 0x03)) {
+    printf("SSL/TLS handshake packet detected! \n");
+    return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+  } 
+    */
+
+  //controllo se sono pacchetti che appartengono al three way handshake o all'instauramento della connessione SSL, in questo caso li accetto tutti
+
+  //controllo se sono pacchetti che appartengono alla comunicazione tra client e server, in questo caso modifico il byte, spedisco al server e faccio partire il timer
+
   if(payload_len > 0 && memmem(payload, payload_len, "BLOCKED", 7) != NULL){
     printf("PACKET DROP \n");
     return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
