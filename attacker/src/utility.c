@@ -29,3 +29,8 @@ void sigint_handler(int signal){
   exit(0);
 }
 
+//function to print application data byte of a packet
+void print_application_data(){
+
+}
+

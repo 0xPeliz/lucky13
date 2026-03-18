@@ -197,6 +197,7 @@ void intercept_packets() {
 
 }
 
+//idea, fare una funzione per il controllo di ogni protocollo (es: controlla se ssl handshake o se è pacchetto dati ssl)
 static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data){
 
   struct nfqnl_msg_packet_hdr *ph; //info about received packet
@@ -204,10 +205,12 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
   int payload_len;
   uint32_t id;
   
-  struct iphdr *iph;
-
+  struct iphdr *ip_header;
   unsigned int iphdr_size;
   struct tcphdr *tcp_header;
+  unsigned int tcphdr_size;
+  char *application_header;
+  //struct application_data *app_data;
 
   ph = nfq_get_msg_packet_hdr(nfa);
   id = ntohl(ph->packet_id);
@@ -217,34 +220,44 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
   payload_len = nfq_get_payload(nfa, &payload);
   printf("Packet data: ID=%u, %d bytes \n", id, payload_len);
 
-  iph = ((struct iphdr *)payload);
-  iphdr_size = iph->ihl << 2; 
+  ip_header = ((struct iphdr *)payload);
+  iphdr_size = ip_header->ihl << 2; 
 
  /*
   for(int i=0; i<payload_len; i++){
     printf("%02x ", payload[i]);
   } */
 
-  printf("Iniziale pyaload: %02x \n", payload[0]);
+  printf("Iniziale payload: %02x \n", payload[0]);
 
-  if(iph->protocol == IPPROTO_TCP){
+  if(ip_header->protocol == IPPROTO_TCP){
     tcp_header = (struct tcphdr *)(payload + iphdr_size);
     printf("TCP packet detected! Source port: %d, Destination port: %d \n", ntohs(tcp_header->source), ntohs(tcp_header->dest));
-  }
-  
-  //payload contiene il pacchetto raw grezzo a partire dall'header IP in su (devo quindi valutare la parte applicativa, che si trova dopo tcp)
-  if (payload_len >= 5 && payload[0] == 0x16 && payload[1] == 0x03 && (payload[2] == 0x01 || payload[2] == 0x02 || payload[2] == 0x03)) {
-    printf("SSL/TLS handshake packet detected! \n");
-    return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
-  }
+    tcphdr_size = tcp_header->doff << 2;
+    application_header = (char *)tcp_header + tcphdr_size;
 
-  //se il pacchetto non appartiene ne al 3 way handshake ne all'instauramento della connessione SSL, allora altero il byte della data posizione e di un dato valore
-  //modify_packet_byte();
+    printf("Printing of the data \n");
+    for(int i=0;i < strlen(application_header); i++){
+      printf("%02x ", application_header[i]);
+    }
+    printf("\n");
 
-  if(payload_len > 0 && memmem(payload, payload_len, "BLOCKED", 7) != NULL){
-    printf("PACKET DROP \n");
-    return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
-  }
+    //SSL/TLS handshake message
+    if(application_header[0] == 0x16 && application_header[1] == 0x03 && (application_header[2] == 0x01 || application_header[2] == 0x02 || application_header[2] == 0x03)){
+      printf("SSL/TLS handshake packet detected! \n");
+      return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+    }
+
+    //SSL/TLS data message, 
+    if(application_header[0] == 0x17 && application_header[1] == 0x03 && (application_header[2] == 0x01 || application_header[2] == 0x02 || application_header[2] == 0x03)){
+      printf("SSL/TLS data packet detected! \n");
+      //extract data and change a byte
+      return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+
+    }
+    
+  } 
+
 
   return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
 }
