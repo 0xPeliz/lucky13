@@ -30,7 +30,12 @@ void sigint_handler(int signal){
 }
 
 //function to print application data byte of a packet
-void print_application_data(){
+void print_application_data(unsigned char *application_data, unsigned int application_data_size){
+  printf("Printing of the application data \n");
+  for(int i=0;i < application_data_size; i++){
+    printf("%02x ", application_data[i]);
+  }
+  printf("\n");
 
 }
 

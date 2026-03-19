@@ -41,6 +41,9 @@ void arp_spoofing(char *ip);
 // network
 void setup_nfq(struct nfq_handle **h, struct nfq_q_handle **qh);
 void intercept_packets();
+static inline struct iphdr *extract_ip_header(unsigned char *payload, unsigned int payload_len);
+static inline struct tcphdr *extract_tcp_header(unsigned char *payload, unsigned int payload_len, unsigned int iphdr_len);
+static inline unsigned char *extract_application_data(unsigned char *payload, unsigned int payload_len, unsigned int iphdr_size, unsigned int tcphdr_size);
 
 #define DIM_PAGE 4096
 
@@ -197,67 +200,129 @@ void intercept_packets() {
 
 }
 
-//idea, fare una funzione per il controllo di ogni protocollo (es: controlla se ssl handshake o se è pacchetto dati ssl)
+
 static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data){
 
-  struct nfqnl_msg_packet_hdr *ph; //info about received packet
+  struct nfqnl_msg_packet_hdr *ph; 
   unsigned char *payload;
-  int payload_len;
+  unsigned int payload_len;
   uint32_t id;
-  
   struct iphdr *ip_header;
   unsigned int iphdr_size;
   struct tcphdr *tcp_header;
   unsigned int tcphdr_size;
-  char *application_header;
-  //struct application_data *app_data;
+  unsigned char *application_payload;
+  unsigned int application_payload_size;
 
   ph = nfq_get_msg_packet_hdr(nfa);
   id = ntohl(ph->packet_id);
 
-  //controllo se sono pacchetti del three way handshake, non hanno payload
-
   payload_len = nfq_get_payload(nfa, &payload);
   printf("Packet data: ID=%u, %d bytes \n", id, payload_len);
 
-  ip_header = ((struct iphdr *)payload);
+  ip_header = extract_ip_header(payload, payload_len);
   iphdr_size = ip_header->ihl << 2; 
 
- /*
-  for(int i=0; i<payload_len; i++){
-    printf("%02x ", payload[i]);
-  } */
-
-  printf("Iniziale payload: %02x \n", payload[0]);
-
   if(ip_header->protocol == IPPROTO_TCP){
-    tcp_header = (struct tcphdr *)(payload + iphdr_size);
+    tcp_header = extract_tcp_header(payload, payload_len, iphdr_size);
     printf("TCP packet detected! Source port: %d, Destination port: %d \n", ntohs(tcp_header->source), ntohs(tcp_header->dest));
     tcphdr_size = tcp_header->doff << 2;
-    application_header = (char *)tcp_header + tcphdr_size;
 
-    printf("Printing of the data \n");
-    for(int i=0;i < strlen(application_header); i++){
-      printf("%02x ", application_header[i]);
-    }
-    printf("\n");
+    application_payload = extract_application_data(payload, payload_len, iphdr_size, tcphdr_size);
+    application_payload_size = payload_len - iphdr_size - tcphdr_size;
 
     //SSL/TLS handshake message
-    if(application_header[0] == 0x16 && application_header[1] == 0x03 && (application_header[2] == 0x01 || application_header[2] == 0x02 || application_header[2] == 0x03)){
-      printf("SSL/TLS handshake packet detected! \n");
+
+    if(application_payload != NULL &&application_payload[0] == 0x16 && application_payload[1] == 0x03 && (application_payload[2] == 0x01 || application_payload[2] == 0x02 || application_payload[2] == 0x03)){
+      printf(ANSI_COLOR_GREEN "SSL/TLS handshake packet detected! \n" ANSI_COLOR_RESET);
       return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
     }
 
-    //SSL/TLS data message, 
-    if(application_header[0] == 0x17 && application_header[1] == 0x03 && (application_header[2] == 0x01 || application_header[2] == 0x02 || application_header[2] == 0x03)){
-      printf("SSL/TLS data packet detected! \n");
-      //extract data and change a byte
-      return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+    //SSL/TLS data message
+    if(application_payload != NULL && application_payload[0] == 0x17 && application_payload[1] == 0x03 && (application_payload[2] == 0x01 || application_payload[2] == 0x02 || application_payload[2] == 0x03)){
+      printf(ANSI_COLOR_GREEN "SSL/TLS data packet detected! \n" ANSI_COLOR_RESET);
+      if(application_payload_size > 0){
+        printf("Printing of the data \n");
+        print_application_data(application_payload, application_payload_size);
+      }
 
+      //sveglio il thread che modifica il pacchetto, ricalcola la checksum, lo invia al server, avvia il timer, attende risposta server, all'arrivo stoppa il timer ed inoltra il pacchetto al client
+      //modify a packet byte, send to server and start the clock
+      //alterate_packet()
+
+      //send_modufied_packet()
+      
+      //drop packet
+      return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
     }
-    
   } 
 
-
   return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+}
+
+//function to extract the IP header from the packet payload
+static inline struct iphdr *extract_ip_header(unsigned char *payload, unsigned int payload_len){
+  struct iphdr *ip_header;
+  if(payload_len < sizeof(struct iphdr)){
+    fprintf(stderr, "Payload too small to contain an IP header! \n");
+    return NULL;
+  }
+  ip_header = ((struct iphdr *)payload);
+
+  return ip_header;
+}
+
+//function to extract the TCP header from the packet payload
+static inline struct tcphdr *extract_tcp_header(unsigned char *payload, unsigned int payload_len, unsigned int iphdr_len){
+  struct tcphdr *tcp_header;
+  if(payload_len < (iphdr_len + sizeof(struct tcphdr))){
+    fprintf(stderr, "Payload too small to contain a TCP header! \n");
+    return NULL;
+  }
+  tcp_header = ((struct tcphdr *)(payload + iphdr_len));
+
+  return tcp_header;
+}
+
+//function to extract the application data from the packet payload
+static inline unsigned char *extract_application_data(unsigned char *payload, unsigned int payload_len, unsigned int iphdr_size, unsigned int tcphdr_size){
+  unsigned char *application_data;
+  if((payload_len <= (iphdr_size + tcphdr_size))){
+    fprintf(stderr, "Payload too small to contain application data! \n");
+    return NULL;
+  }
+
+  application_data = ((char *)payload + iphdr_size + tcphdr_size);
+  return application_data;
+}
+
+//0 -> ssl handshake, 1 --> ssl/tls data packet, 
+int analyze_application_data(unsigned char *payload, int payload_len){
+
+}
+
+/*
+  devo tenere traccia di che byte utilizzare e di quale byte modificare
+  es: byte 0x00 in ultima pos, poi 0x01, poi 0x02, ecc... fino a 0xff, poi ricomincio da 0x01
+  (il byte che ha il minore tempo diu risposta è quello corretto)
+*/
+
+
+void alterate_packet(unsigned char *payload, unsigned int payload_len){
+
+}
+
+
+void send_modified_packet(){
+
+}
+
+void start_timer(){
+
+
+}
+
+
+void stop_timer(){
+
 }
