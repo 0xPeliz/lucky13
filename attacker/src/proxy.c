@@ -45,6 +45,8 @@ static inline struct iphdr *extract_ip_header(unsigned char *payload, unsigned i
 static inline struct tcphdr *extract_tcp_header(unsigned char *payload, unsigned int payload_len, unsigned int iphdr_len);
 static inline unsigned char *extract_application_data(unsigned char *payload, unsigned int payload_len, unsigned int iphdr_size, unsigned int tcphdr_size);
 
+
+
 #define DIM_PAGE 4096
 
 char *ip_client = "127.0.0.1"; 
@@ -76,7 +78,12 @@ int main(int argc, char *argv[]) {
   extract_mode();
   extract_network_config();
 
-  signal(SIGINT, sigint_handler);
+  signal(SIGINT, signals_handler);
+  signal(SIGABRT, signals_handler);
+  signal(SIGTERM, signals_handler);
+  signal(SIGQUIT, signals_handler);
+  signal(SIGSEGV, signals_handler);
+  signal(SIGFPE, signals_handler);
 
   // selecting the operation mode
   // -m --> LocalHost

@@ -23,8 +23,8 @@ char *delete_char(char *str, char c) {
 }
 
 
-void sigint_handler(int signal){
-  printf("CTRL+C received! \n");
+void signals_handler(int signal){
+  printf("Termination signal received! \n");
   restore_network_default();
   exit(0);
 }

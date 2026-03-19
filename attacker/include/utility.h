@@ -11,7 +11,7 @@
 #define BOLD_GREEN "\033[1;32m"
 
 char *delete_char(char *str, char c);
-void sigint_handler(int signal); //function to handle the SIGINT signal, to restore the default network settings when the user presses CTRL+C
+void signals_handler(int signal); //function to handle the SIGINT signal, to restore the default network settings when the user presses CTRL+C
 void print_application_data(unsigned char *application_data, unsigned int application_data_size);
 
 #endif
