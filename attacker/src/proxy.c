@@ -8,6 +8,8 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <pthread.h>
+#include <stdbool.h>
 #include <arpa/inet.h>
 #include <linux/if_arp.h>
 #include <linux/if_ether.h>
@@ -45,7 +47,12 @@ static inline struct iphdr *extract_ip_header(unsigned char *payload, unsigned i
 static inline struct tcphdr *extract_tcp_header(unsigned char *payload, unsigned int payload_len, unsigned int iphdr_len);
 static inline unsigned char *extract_application_data(unsigned char *payload, unsigned int payload_len, unsigned int iphdr_size, unsigned int tcphdr_size);
 
+void *do_attack_thread(void *arg);
 
+unsigned char *packet_data;
+pthread_cond_t attack_thread_cond = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t attack_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
+bool attack;
 
 #define DIM_PAGE 4096
 
@@ -58,6 +65,9 @@ char op_mode;
 static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data);
 
 int main(int argc, char *argv[]) {
+
+  pthread_t attack_thread;
+  attack = false;
 
   if (argc < 3) {
     perror("Missing arguments! \n");
@@ -77,13 +87,10 @@ int main(int argc, char *argv[]) {
 
   extract_mode();
   extract_network_config();
+  catch_signals();
 
-  signal(SIGINT, signals_handler);
-  signal(SIGABRT, signals_handler);
-  signal(SIGTERM, signals_handler);
-  signal(SIGQUIT, signals_handler);
-  signal(SIGSEGV, signals_handler);
-  signal(SIGFPE, signals_handler);
+  pthread_create(&attack_thread, NULL, do_attack_thread, NULL);
+  //variabili condizionali per sleep e risveglio del thread
 
   // selecting the operation mode
   // -m --> LocalHost
@@ -100,15 +107,6 @@ int main(int argc, char *argv[]) {
 
 //function to extrract the operating mode by operating mode parameter
 void extract_mode() {
-
-  //op_mode = delete_char(op_mode, '-');
-
-  // secruity check about number of char
-  /*
-  if (strlen(op_mode) > 1) {
-    perror("Too many chars in the mode flag! \n");
-    exit(EXIT_FAILURE);
-  }*/
   
   switch (op_mode) {
   case 'd':
@@ -125,13 +123,6 @@ void extract_mode() {
 
 //function to extrract the network configuration by network configuration parameter
 void extract_network_config() {
-  //network_config = delete_char(network_config, '-');
-
-  /*
-  if (strlen(network_config) > 1) {
-    fprintf(stderr, "Too many chars in the network_config flag! \n");
-    exit(EXIT_FAILURE);
-  }*/
 
   switch (network_config) {
   case 'm':
@@ -157,7 +148,7 @@ void do_localhost_attack() {
 
 void arp_spoofing(char *ip) {
 
-  // chiama l'apposito tool per effettuare arp spoofing
+  // chiama l'apposito tool per effettuare arp spoofing (in base a dove viene eseguit l'attacco)
 }
 
 //function to initialize nfq (NFQUEUE)
@@ -207,7 +198,7 @@ void intercept_packets() {
 
 }
 
-
+//function to determinate the sort of a packet
 static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data){
 
   struct nfqnl_msg_packet_hdr *ph; 
@@ -239,7 +230,6 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
     application_payload_size = payload_len - iphdr_size - tcphdr_size;
 
     //SSL/TLS handshake message
-
     if(application_payload != NULL &&application_payload[0] == 0x16 && application_payload[1] == 0x03 && (application_payload[2] == 0x01 || application_payload[2] == 0x02 || application_payload[2] == 0x03)){
       printf(ANSI_COLOR_GREEN "SSL/TLS handshake packet detected! \n" ANSI_COLOR_RESET);
       return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
@@ -247,18 +237,23 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
 
     //SSL/TLS data message
     if(application_payload != NULL && application_payload[0] == 0x17 && application_payload[1] == 0x03 && (application_payload[2] == 0x01 || application_payload[2] == 0x02 || application_payload[2] == 0x03)){
-      printf(ANSI_COLOR_GREEN "SSL/TLS data packet detected! \n" ANSI_COLOR_RESET);
+      printf(ANSI_COLOR_BLUE "SSL/TLS data packet detected! \n" ANSI_COLOR_RESET);
       if(application_payload_size > 0){
         printf("Printing of the data \n");
         print_application_data(application_payload, application_payload_size);
+        packet_data = payload; //i need to pass the entire packet to calculate the new checksum
+        attack = true;
+        pthread_cond_signal(&attack_thread_cond);
+        
       }
 
       //sveglio il thread che modifica il pacchetto, ricalcola la checksum, lo invia al server, avvia il timer, attende risposta server, all'arrivo stoppa il timer ed inoltra il pacchetto al client
       //modify a packet byte, send to server and start the clock
       //alterate_packet()
 
-      //send_modufied_packet()
+      //send_modified_packet()
       
+
       //drop packet
       return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
     }
@@ -314,22 +309,50 @@ int analyze_application_data(unsigned char *payload, int payload_len){
   (il byte che ha il minore tempo diu risposta è quello corretto)
 */
 
-
-void alterate_packet(unsigned char *payload, unsigned int payload_len){
+//function to modify the packet
+void modify_packet(unsigned char *payload, unsigned int payload_len){
 
 }
 
+//function to recalculate the TCP checksum
+void recalculate_checksum(){
 
+}
+
+//function to send the modified packet to the server
 void send_modified_packet(){
 
 }
 
+//function to start the clock timer
 void start_timer(){
 
 
 }
 
-
+//function to stop the clock timer
 void stop_timer(){
+
+}
+
+//thread function to perform attack
+void *do_attack_thread(void *arg){
+
+  while(1==1){
+    while(attack == false){
+      //pthread_mutex_lock(&attack_thread_mutex);
+      pthread_cond_wait(&attack_thread_cond, &attack_thread_mutex);
+      //pthread_mutex_unlock(&attack_thread_mutex);
+    } 
+    printf("Secondo thread avviato\n");
+    //modify_packet(packet_data);
+    //recalculate_checksum();
+    //send_modified_packet();
+    //start_timer(); (forse chiamata subito dentro send_modified_packet)
+    //wait for response
+    //stop_timer();
+    //write result to csv file
+    attack = false;
+  }
 
 }

@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
 #include "../include/network.h"
 #include "../include/utility.h"
 
@@ -39,3 +40,11 @@ void print_application_data(unsigned char *application_data, unsigned int applic
 
 }
 
+void catch_signals(){
+  signal(SIGINT, signals_handler);
+  signal(SIGABRT, signals_handler);
+  signal(SIGTERM, signals_handler);
+  signal(SIGQUIT, signals_handler);
+  signal(SIGSEGV, signals_handler);
+  signal(SIGFPE, signals_handler);
+}
