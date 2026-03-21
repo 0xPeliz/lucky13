@@ -40,6 +40,17 @@ void print_application_data(unsigned char *application_data, unsigned int applic
 
 }
 
+/*
+void print_packet(Data_packet *data_packet) {
+  printf("------Packet------ \n");
+  printf("IP Header: \n");
+  print_ip_header(data_packet->ip_header);
+  printf("TCP Header: \n");
+  print_tcp_header(data_packet->tcp_header);
+  printf("Application Data: \n");
+  print_application_data(data_packet->data, data_packet->data_len);
+} */
+
 void catch_signals(){
   signal(SIGINT, signals_handler);
   signal(SIGABRT, signals_handler);

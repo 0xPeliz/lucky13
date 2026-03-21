@@ -22,16 +22,16 @@
 #include <linux/netfilter.h>
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
-/* Obittivi del proxy:
- * inoltrare il traffico da client a server
- *      - inoltrare il three way handshake
- *      - inoltrare l'instauramento della connessione SSL
- *      -
- *
- *      considerare il caso in cui il server si trova in una sottorete diversa
- * dalla mia ma gestito da switc
- *
- * */
+typedef struct Data_packet{
+  unsigned char *packet;
+  unsigned int len;
+  struct iphdr *ip_header;
+  unsigned int ip_header_len;
+  struct tcphdr *tcp_header;
+  unsigned int tcp_header_len;
+  unsigned char *data;
+  unsigned int data_len;
+}Data_packet;
 
 void extract_mode();
 void extract_network_config();
@@ -49,7 +49,7 @@ static inline unsigned char *extract_application_data(unsigned char *payload, un
 
 void *do_attack_thread(void *arg);
 
-unsigned char *packet_data;
+Data_packet *data_packet;
 pthread_cond_t attack_thread_cond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t attack_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
 bool attack;
@@ -81,6 +81,12 @@ int main(int argc, char *argv[]) {
 
   if(argv[2][0] == '-'){
     network_config = argv[2][1];
+  }
+
+  data_packet = (Data_packet *)malloc(sizeof(Data_packet));
+  if(!data_packet){
+    perror("Error allocating memory for data_packet! \n");
+    exit(EXIT_FAILURE);
   }
   
   printf("Operation mode: %c. Network config: %c \n", op_mode, network_config);
@@ -241,10 +247,46 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
       if(application_payload_size > 0){
         printf("Printing of the data \n");
         print_application_data(application_payload, application_payload_size);
-        packet_data = payload; //i need to pass the entire packet to calculate the new checksum
+
+        //allocate memory for the packet
+        data_packet->packet = (unsigned char *)malloc(payload_len * sizeof(unsigned char));
+        if(!data_packet->packet){
+          perror("Error allocating memory for data_packet->packet! \n");
+          exit(EXIT_FAILURE);
+        }
+        memcpy(data_packet->packet, payload, payload_len);
+        data_packet->len = payload_len;//i need to pass the entire packet to calculate the new checksum
+        
+        //qui si verifica un problema 
+        //allocate memory for the ip_header
+        data_packet->ip_header = (struct iphdr *)malloc(sizeof(struct iphdr));
+        if(!data_packet->ip_header){
+          perror("Error allocating memory for data_packet->ip_header! \n");
+          exit(EXIT_FAILURE);
+        }
+        memcpy(data_packet->ip_header, ip_header, sizeof(struct iphdr));
+        data_packet->ip_header_len = iphdr_size;
+
+        //allocate memory for the tcp_header
+        data_packet->tcp_header = (struct tcphdr *)malloc(sizeof(struct tcphdr));
+        if(!data_packet->tcp_header){
+          perror("Error allocating memory for data_packet->tcp_header! \n");
+          exit(EXIT_FAILURE);
+        }
+        memcpy(data_packet->tcp_header, tcp_header, sizeof(struct tcphdr));
+        data_packet->tcp_header_len = tcphdr_size;
+
+        //allocate memory for the application data
+        data_packet->data = (unsigned char *)malloc(application_payload_size * sizeof(unsigned char));
+        if(!data_packet->data){
+          perror("Error allocating memory for data_packet->data! \n");
+          exit(EXIT_FAILURE);
+        }
+        memcpy(data_packet->data, application_payload, application_payload_size);
+        data_packet->data_len = application_payload_size;
+
         attack = true;
         pthread_cond_signal(&attack_thread_cond);
-        
       }
 
       //sveglio il thread che modifica il pacchetto, ricalcola la checksum, lo invia al server, avvia il timer, attende risposta server, all'arrivo stoppa il timer ed inoltra il pacchetto al client
@@ -345,6 +387,11 @@ void *do_attack_thread(void *arg){
       //pthread_mutex_unlock(&attack_thread_mutex);
     } 
     printf("Secondo thread avviato\n");
+    printf("------Packet------ \n");
+    print_application_data(data_packet->data, data_packet->data_len);
+
+
+    
     //modify_packet(packet_data);
     //recalculate_checksum();
     //send_modified_packet();
