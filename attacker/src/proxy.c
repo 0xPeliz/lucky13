@@ -24,19 +24,6 @@
 
 //FARE REFACTORING CON Byte
 
-typedef struct Data_packet{
-  Byte *packet;
-  unsigned int len;
-  struct iphdr *ip_header;
-  unsigned int ip_header_len;
-  struct tcphdr *tcp_header;
-  unsigned int tcp_header_len;
-  Byte *data;
-  unsigned int data_len;
-  //unsigned int header_data_len; //num of byte of header for data
-  //unsigned int real_data_len; //num of real data byte
-}Data_packet;
-
 void extract_mode();
 void extract_network_config();
 void do_localhost_attack();
@@ -368,45 +355,19 @@ void modify_packet(int block_pos, int byte_pos){
   Byte *bytes_to_add = NULL;
 
 
-  Byte *mask = (Byte *)malloc(sizeof(Byte) * data_packet->data_len);
+  Byte *mask = (Byte *)malloc(sizeof(Byte) * data_packet->data_len - 5);
   //memset(mask, 0x00 , pos_byte);
   int i;
   int num_block = 0;
 
   //la maschera deve avere tutti i bit a zero tranne i byte che devo modificare
-  for(i=0; i < data_packet->data_len - 5; i++){
-    if(block_pos-1 == num_block && (i >= (num_block * 16 + byte_pos))){
-      mask[i] = data_packet->data[i+5];
-    }else{
-      mask[i] = 0x00;
-    }
-    /*
-    if(i < (num_block * 16 + byte_pos)){ //pos byte va bene solo se si considera un blocco cifrato alla volta e non l'intero pacchetto cifrato
-      mask[i] = 0x00;
-    }else{
-      mask[i] = data_packet->data[i+5];
-    }*/
-    if(i != 0 && i % 16 == 0){
-      num_block++;
-    }
-  }
+  mask = make_mask(block_pos, byte_pos, data_packet);
  
   //xor tra maschera e pacchetto originale
   Byte *modified_packet = xor_block(prec_block, mask, data_packet->data_len);
 
   print_blocks(modified_packet, data_packet->data_len);
 
-  /*
-  for(i = 0; i < 16; i++){
-    printf("%02x ", mask[i]);
-  }*/
-
- // unsigned char *modified_packet = prec_block XOR mask
-
-}
-
-Byte make_mask(){
-  
 }
 
 //TROVARE UNA SOLUZIONE MIGLIORE ALLA GESTIONE DEL -5 SULLA GRANDEZZA DEL PACCHETTO DATA

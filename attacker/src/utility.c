@@ -116,3 +116,24 @@ Byte *xor_block(Byte *block, Byte *mask, unsigned int len){
 
   return result;
 }
+
+
+Byte *make_mask(int block_pos, int byte_pos, const Data_packet *data_packet){
+
+  Byte *mask = (Byte *) malloc(sizeof(Byte) * (data_packet->data_len - 5));
+  int num_block = 0;
+  int i;
+
+  for(i=0; i < data_packet->data_len - 5; i++){
+    if(i != 0 && i % 16 == 0){
+      num_block++;
+    }
+    if(block_pos-1 == num_block && (i >= (num_block * 16 + byte_pos))){
+      mask[i] = data_packet->data[i+5];
+    }else{
+      mask[i] = 0x00;
+    }
+  }
+
+  return mask;
+}
