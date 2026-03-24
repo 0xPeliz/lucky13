@@ -37,6 +37,7 @@ void print_application_data(unsigned char *application_data, unsigned int applic
     printf("%02x ", application_data[i]);
   }
   printf("\n");
+  printf("Data length: %d \n", application_data_size);
 
 }
 
@@ -58,4 +59,60 @@ void catch_signals(){
   signal(SIGQUIT, signals_handler);
   signal(SIGSEGV, signals_handler);
   signal(SIGFPE, signals_handler);
+}
+
+//function to check if the data length is correct, comparing the length of the application data with the length specified in the packet header
+bool check_data_length(Byte *data, unsigned int data_len){
+  bool valid = false;
+
+  if(data_len < 0 || data_len > 65535){
+    return valid;
+  }
+
+  unsigned int total_data_len =(unsigned int)(data[3] << 8 | data[4]);
+  printf("Total data length from the packet: %d \n", total_data_len);
+  printf("Data length from the packet header: %d \n", data_len);
+  if(total_data_len == data_len - 5){
+    valid = true;
+  }
+
+  return valid;
+}
+
+//ONLY FOR THE ORIGINAL DATA PACKET BECAUSAE THIS FUNCTION SKIPS THE FIRST 5 POSITIONS
+//function to print the data blocks of a packet, to understand how the data is structured and where to modify it
+void print_data_blocks(Byte *data, unsigned int data_len){
+  printf(" \n Printing of the data blocks \n");
+  
+  for(int i=0; i < data_len - 5; i++){
+    if(i % 16 == 0){
+      printf("\n B%d -> ", (i/16));
+    }
+    printf("%02x ", data[i+5]);
+  }
+  printf("\n");
+}
+
+void print_blocks(Byte *data, unsigned int data_len){
+  for(int i=0; i < data_len - 5; i++){
+    if(i % 16 == 0){
+      printf("\n B%d -> ", (i/16));
+    }
+    printf("%02x ", data[i]);
+  }
+  printf("\n");
+}
+
+//function to perform the XOR operation between two blocks of data, to modify the packet
+Byte *xor_block(Byte *block, Byte *mask, unsigned int len){
+
+  Byte *result = (Byte *)malloc(sizeof(Byte) * len);
+  int i,j = 5;
+
+  for(i=0; i < len && j < len; i++, j++){
+    result[i] = block[j] ^ mask[i];
+    printf("block byte: %02x, mask byte: %02x, result byte: %02x \n", block[j], mask[i], result[i]);
+  }
+
+  return result;
 }

