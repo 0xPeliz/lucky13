@@ -360,8 +360,9 @@ void modify_packet(int block_pos, int byte_pos){
   int i;
   int num_block = 0;
 
-  //la maschera deve avere tutti i bit a zero tranne i byte che devo modificare
   mask = make_mask(block_pos, byte_pos, data_packet);
+
+  //devo poi capire come inserire i valori che mi servono all'interno dei byte "decifrati" prima
  
   //xor tra maschera e pacchetto originale
   Byte *modified_packet = xor_block(prec_block, mask, data_packet->data_len);
