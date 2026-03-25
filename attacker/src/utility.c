@@ -3,7 +3,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
-#include <stdbool.h>
 #include "../include/network.h"
 #include "../include/utility.h"
 

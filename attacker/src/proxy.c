@@ -42,6 +42,7 @@ Data_packet *data_packet;
 pthread_cond_t attack_thread_cond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t attack_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
 bool attack;
+Byte *cookie; //define the large with thre realloc function
 
 #define DIM_PAGE 4096
 
@@ -288,7 +289,6 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
       //alterate_packet()
 
       //send_modified_packet()
-      
 
       //drop packet
       return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
@@ -371,7 +371,6 @@ void modify_packet(int block_pos, int byte_pos){
 
   print_blocks(modified_packet, data_packet->data_len);
 
-
   printf("\n stampa del pacchetto dopo maschera first bytes!  \n");
   print_blocks(modified_first_bytes, data_packet->data_len);
 
@@ -422,6 +421,7 @@ void *do_attack_thread(void *arg){
     
     modify_packet(4,14);
     //recalculate_checksum();
+    //data_packet->ip_header->checksum = new_checksum
     //send_modified_packet();
     //start_timer(); (forse chiamata subito dentro send_modified_packet)
     //wait for response
