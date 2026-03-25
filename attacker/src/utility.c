@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
+#include <stdbool.h>
 #include "../include/network.h"
 #include "../include/utility.h"
 
@@ -111,7 +112,7 @@ Byte *xor_block(Byte *block, Byte *mask, unsigned int len){
 
   for(i=0; i < len && j < len; i++, j++){
     result[i] = block[j] ^ mask[i];
-    printf("block byte: %02x, mask byte: %02x, result byte: %02x \n", block[j], mask[i], result[i]);
+    //printf("block byte: %02x, mask byte: %02x, result byte: %02x \n", block[j], mask[i], result[i]);
   }
 
   return result;
@@ -128,7 +129,7 @@ Byte *make_mask(int block_pos, int byte_pos, const Data_packet *data_packet){
     if(i != 0 && i % 16 == 0){
       num_block++;
     }
-    if(block_pos-1 == num_block && (i >= (num_block * 16 + byte_pos))){
+    if(block_pos-1 == num_block && (i == (num_block * 16 + byte_pos))){ //num_block è su scala 0-4
       mask[i] = data_packet->data[i+5];
     }else{
       mask[i] = 0x00;
@@ -137,3 +138,23 @@ Byte *make_mask(int block_pos, int byte_pos, const Data_packet *data_packet){
 
   return mask;
 }
+
+
+Byte *make_mask_first_bytes(int block_pos, const Data_packet *data_packet){
+  Byte *mask = (Byte *) malloc(sizeof(Byte) * (data_packet->data_len - 5));
+  int num_block = 0;
+  int i;
+
+  for(i=0; i < data_packet->data_len - 5; i++){
+    if(i != 0 && i % 16 == 0){
+      num_block++;
+    }
+    if(block_pos-1 == num_block && (i >= (num_block * 16 + 14))){ //num_block è su scala 0-4 e 14 indica il penultimo byte del blocco (su cifrari a blocchi da 16 bytes)
+      mask[i] = data_packet->data[i+5];
+    }else{
+      mask[i] = 0x00;
+    }
+  }
+
+  return mask;
+} 

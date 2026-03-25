@@ -22,8 +22,6 @@
 #include <linux/netfilter.h>
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
-//FARE REFACTORING CON Byte
-
 void extract_mode();
 void extract_network_config();
 void do_localhost_attack();
@@ -362,12 +360,20 @@ void modify_packet(int block_pos, int byte_pos){
 
   mask = make_mask(block_pos, byte_pos, data_packet);
 
+  Byte *mask_first_bytes = (Byte *) malloc(sizeof(Byte) * data_packet->data_len - 5);
+  mask_first_bytes = make_mask_first_bytes(block_pos, data_packet);
+
   //devo poi capire come inserire i valori che mi servono all'interno dei byte "decifrati" prima
  
   //xor tra maschera e pacchetto originale
   Byte *modified_packet = xor_block(prec_block, mask, data_packet->data_len);
+  Byte *modified_first_bytes = xor_block(prec_block, mask_first_bytes, data_packet->data_len);
 
   print_blocks(modified_packet, data_packet->data_len);
+
+
+  printf("\n stampa del pacchetto dopo maschera first bytes!  \n");
+  print_blocks(modified_first_bytes, data_packet->data_len);
 
 }
 
