@@ -32,6 +32,7 @@ void catch_signals();
 bool check_data_length(Byte *data, unsigned int data_len);
 void print_data_blocks(Byte *data, unsigned int data_len);
 void print_blocks(Byte *data, unsigned int data_len);
+void print_tls_header(Byte *data);
 Byte *make_mask(int block_pos, int byte_pos, const Data_packet *data_packet);
 Byte *make_mask_first_bytes(int block_pos, const Data_packet *data_packet);
 Byte *xor_block(Byte *block1, Byte *block2, unsigned int len);

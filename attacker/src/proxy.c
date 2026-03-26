@@ -353,14 +353,15 @@ void modify_packet(int block_pos, int byte_pos){
   Byte *bytes_to_add = NULL;
 
 
-  Byte *mask = (Byte *)malloc(sizeof(Byte) * data_packet->data_len - 5);
+  Byte *mask = (Byte *)malloc(sizeof(Byte) * data_packet->data_len);
   //memset(mask, 0x00 , pos_byte);
   int i;
   int num_block = 0;
 
+  //i primi 5 byte della maschera, relativi all'intestazione di tls data, devono essere tutti a 0
   mask = make_mask(block_pos, byte_pos, data_packet);
 
-  Byte *mask_first_bytes = (Byte *) malloc(sizeof(Byte) * data_packet->data_len - 5);
+  Byte *mask_first_bytes = (Byte *) malloc(sizeof(Byte) * data_packet->data_len);
   mask_first_bytes = make_mask_first_bytes(block_pos, data_packet);
 
   //devo poi capire come inserire i valori che mi servono all'interno dei byte "decifrati" prima
@@ -370,6 +371,10 @@ void modify_packet(int block_pos, int byte_pos){
   Byte *modified_first_bytes = xor_block(prec_block, mask_first_bytes, data_packet->data_len);
 
   print_blocks(modified_packet, data_packet->data_len);
+
+  printf(" \n Stampa del'header dopo maschera! \n");
+  print_tls_header(modified_first_bytes);
+
 
   printf("\n stampa del pacchetto dopo maschera first bytes!  \n");
   print_blocks(modified_first_bytes, data_packet->data_len);

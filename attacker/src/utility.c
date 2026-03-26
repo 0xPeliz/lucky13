@@ -98,6 +98,15 @@ void print_blocks(Byte *data, unsigned int data_len){
     if(i % 16 == 0){
       printf("\n B%d -> ", (i/16));
     }
+    printf("%02x ", data[i+5]);
+  }
+  printf("\n");
+}
+
+void print_tls_header(Byte *data){
+  int i;
+
+  for(i=0;i<5;i++){
     printf("%02x ", data[i]);
   }
   printf("\n");
@@ -107,7 +116,7 @@ void print_blocks(Byte *data, unsigned int data_len){
 Byte *xor_block(Byte *block, Byte *mask, unsigned int len){
 
   Byte *result = (Byte *)malloc(sizeof(Byte) * len);
-  int i,j = 5;
+  int i,j = 0;
 
   for(i=0; i < len && j < len; i++, j++){
     result[i] = block[j] ^ mask[i];
@@ -120,18 +129,22 @@ Byte *xor_block(Byte *block, Byte *mask, unsigned int len){
 
 Byte *make_mask(int block_pos, int byte_pos, const Data_packet *data_packet){
 
-  Byte *mask = (Byte *) malloc(sizeof(Byte) * (data_packet->data_len - 5));
+  Byte *mask = (Byte *) malloc(sizeof(Byte) * (data_packet->data_len ));
   int num_block = 0;
   int i;
+
+  for(i=0; i < 5; i++){
+    mask[i] == 0x00;
+  }
 
   for(i=0; i < data_packet->data_len - 5; i++){
     if(i != 0 && i % 16 == 0){
       num_block++;
     }
     if(block_pos-1 == num_block && (i == (num_block * 16 + byte_pos))){ //num_block è su scala 0-4
-      mask[i] = data_packet->data[i+5];
+      mask[i+5] = data_packet->data[i+5];
     }else{
-      mask[i] = 0x00;
+      mask[i+5] = 0x00;
     }
   }
 
@@ -144,14 +157,18 @@ Byte *make_mask_first_bytes(int block_pos, const Data_packet *data_packet){
   int num_block = 0;
   int i;
 
+  for(i=0;i<5;i++){
+    mask[i] = 0x00;
+  }
+
   for(i=0; i < data_packet->data_len - 5; i++){
     if(i != 0 && i % 16 == 0){
       num_block++;
     }
     if(block_pos-1 == num_block && (i >= (num_block * 16 + 14))){ //num_block è su scala 0-4 e 14 indica il penultimo byte del blocco (su cifrari a blocchi da 16 bytes)
-      mask[i] = data_packet->data[i+5];
+      mask[i+5] = data_packet->data[i+5];
     }else{
-      mask[i] = 0x00;
+      mask[i+5] = 0x00;
     }
   }
 
