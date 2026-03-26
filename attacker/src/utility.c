@@ -59,6 +59,7 @@ void catch_signals(){
   signal(SIGQUIT, signals_handler);
   signal(SIGSEGV, signals_handler);
   signal(SIGFPE, signals_handler);
+  signal(SIGILL, signals_handler);
 }
 
 //function to check if the data length is correct, comparing the length of the application data with the length specified in the packet header
