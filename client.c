@@ -7,7 +7,6 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-
 SSL_CTX *setup_ssl_context();
 int initialize_connection(const char *server_ip, int port);
 int do_single_request(const char *server_ip, int port, SSL_CTX *ctx); 
@@ -38,7 +37,15 @@ int main(int argc, char *argv[])
     exit(EXIT_FAILURE);
   }
 
-  sendRequests(server_ip, port, ctx);
+  char decision;
+  printf("Do you want to start the attack (y/n)? ");
+  scanf("%c", &decision);
+
+  if(decision == 'y'){
+    system("ping -c 1 192.168.100.10");
+    system("ip neighbor show");
+    sendRequests(server_ip, port, ctx);
+  }
 
   /*
   SSL_shutdown(ssl);

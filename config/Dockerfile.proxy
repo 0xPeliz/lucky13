@@ -1,0 +1,30 @@
+FROM ubuntu:20.04
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    iptables \
+    iproute2 \
+    net-tools \
+    dsniff \
+    libnetfilter-queue-dev \
+    libpcap-dev \
+    libssl-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN update-alternatives --set iptables /usr/sbin/iptables-nft || true
+RUN update-alternatives --set ip6tables /usr/sbin/ip6tables-nft || true
+
+WORKDIR /app
+
+COPY attacker/src/ ./
+
+COPY attacker/include/ ./include/
+
+RUN gcc -Iinclude -c proxy.c -o proxy.o && \
+    gcc -Iinclude -c utility.c -o utility.o && \
+    gcc -Iinclude -c network.c -o network.o && \
+    gcc proxy.o network.o utility.o -o proxy -lssl -lcrypto -lnetfilter_queue -lpcap -pthread
+
+CMD ["tail", "-f", "/dev/null"]

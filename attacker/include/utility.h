@@ -38,4 +38,6 @@ Byte *make_mask_first_bytes(int block_pos, const Data_packet *data_packet);
 Byte *xor_block(Byte *block1, Byte *block2, unsigned int len);
 
 
+
+
 #endif

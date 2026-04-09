@@ -1,0 +1,12 @@
+FROM ubuntu:20.04
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y build-essential libssl-dev gcc \ 
+    net-tools \
+    iproute2 \
+    iputils-ping
+WORKDIR /app
+
+COPY client.c server.crt ./
+RUN gcc client.c -o client -lssl -lcrypto
+
+CMD ["tail", "-f", "/dev/null"]

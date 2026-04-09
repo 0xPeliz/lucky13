@@ -1,7 +1,9 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdint.h>
 #include <signal.h>
 #include "../include/network.h"
 #include "../include/utility.h"
@@ -175,3 +177,9 @@ Byte *make_mask_first_bytes(int block_pos, const Data_packet *data_packet){
 
   return mask;
 } 
+
+
+
+
+
+

