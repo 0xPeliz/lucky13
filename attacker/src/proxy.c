@@ -49,8 +49,6 @@ char my_ip[INET_ADDRSTRLEN];
 char gateway_ip[INET_ADDRSTRLEN];
 char ip_client[INET_ADDRSTRLEN];
 char ip_server[INET_ADDRSTRLEN];
-//char *ip_client = "127.0.0.1"; 
-//char *ip_server = "127.0.0.1";
 int port_server = 5000;
 char network_config;
 char op_mode;

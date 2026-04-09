@@ -18,10 +18,11 @@ int main(int argc, char *argv[])
   // indirizzo del server
   char *server_ip;
   int port;
+  char ping_cmd[16];
 
   if(argc != 3){
-      perror("Missing server address argument");
-      exit(EXIT_FAILURE);
+    perror("Missing server address argument");
+    exit(EXIT_FAILURE);
   }
 
   server_ip = argv[1];
@@ -30,6 +31,10 @@ int main(int argc, char *argv[])
   printf("Ip server: %s\n", server_ip);
   printf("Port: %d\n", port);
 
+  //snprintf(ping_cmd, sizeof(ping_cmd), "ping -c 1 %s", server_ip);
+  system("ip neighbor show");
+  //system(ping_cmd);
+ 
   SSL_CTX *ctx = setup_ssl_context();
 
   if (ctx == NULL) {
@@ -37,15 +42,12 @@ int main(int argc, char *argv[])
     exit(EXIT_FAILURE);
   }
 
+  /*
   char decision;
   printf("Do you want to start the attack (y/n)? ");
-  scanf("%c", &decision);
+  scanf("%c", &decision); */
 
-  if(decision == 'y'){
-    system("ping -c 1 192.168.100.10");
-    system("ip neighbor show");
-    sendRequests(server_ip, port, ctx);
-  }
+  sendRequests(server_ip, port, ctx);
 
   /*
   SSL_shutdown(ssl);
@@ -107,6 +109,7 @@ int do_single_request(const char *server_ip, int port, SSL_CTX *ctx){
     exit(EXIT_FAILURE);
   }
 
+  system("ip neighbor show");
   SSL_set_fd(ssl, sockfd);
 
   if (SSL_connect(ssl) <= 0) {
