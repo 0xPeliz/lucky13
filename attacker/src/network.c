@@ -13,36 +13,46 @@
 //function to set a personalized iptables configuration on the client to receive packets
 void setup_network_interception() {
   char cmd[256];
+  char cmd_mark[256]; // Nuova stringa per la regola del mark
   char port[6];
 
   snprintf(port, sizeof(port), "%d", port_server);
 
+  system("iptables -A OUTPUT -p icmp --icmp-type redirect -j DROP");
+
   if(network_config == 'l'){
+    snprintf(cmd_mark, sizeof(cmd_mark), "iptables -I OUTPUT 1 -m mark --mark 1 -j ACCEPT");
+    system(cmd_mark);
     snprintf(cmd, sizeof(cmd), "iptables -A OUTPUT -d %s -p tcp --dport %s -j NFQUEUE --queue-num 0", ip_server, port);
+    system(cmd);
   }else if(network_config == 'n' || network_config == 'i'){
-    //snprintf(cmd, sizeof(cmd), "iptables -A FORWARD -s %s -d %s -p tcp --dport %s -j NFQUEUE --queue-num 0", ip_client, ip_server, port);
     snprintf(cmd, sizeof(cmd), "iptables -I FORWARD 1 -s %s -d %s -p tcp --dport %s -j NFQUEUE --queue-num 0", ip_client, ip_server, port);
+    system(cmd);
     set_ipforwarding(1);
   }
-
-  system(cmd);
 }
 
 //function to restore the default settings of iptables
 void restore_network_default() {
-
   char cmd[256];
+  char cmd_mark[256];
   char port[6];
+
   snprintf(port, sizeof(port), "%d", port_server);
 
+  system("iptables -D OUTPUT -p icmp --icmp-type redirect -j DROP");
+
   if(network_config == 'l'){
+    snprintf(cmd_mark, sizeof(cmd_mark), "iptables -D OUTPUT -m mark --mark 1 -j ACCEPT");
+    system(cmd_mark);
+    system(cmd);
     snprintf(cmd, sizeof(cmd), "iptables -D OUTPUT -d %s -p tcp --dport %s -j NFQUEUE --queue-num 0", ip_server, port);
   }else if(network_config == 'n' || network_config == 'i'){
     snprintf(cmd, sizeof(cmd), "iptables -D FORWARD -s %s -d %s -p tcp --dport %s -j NFQUEUE --queue-num 0", ip_client, ip_server, port);
+    system(cmd);
     set_ipforwarding(0);
   }
-
-  system(cmd);
+  
 }
 
 //function to set IP forwarding, necessary for MITM proxy outiside localhost
@@ -87,6 +97,7 @@ void config_internet_architecture(){
 
 }
 
+//function to do the effective ARP spoofing attack to client and server
 pid_t arp_spoofing(const char *target_ip, const char *host_ip){
   pid_t pid = fork();
 
@@ -161,4 +172,122 @@ void get_network_info(char *local_ip, char *gateway_ip){
 
   close(sockfd);
 
+}
+
+void get_local_address(const char *server_ip, const int server_port, struct sockaddr_in *local_addr){
+
+  struct sockaddr_in server_addr;
+  socklen_t local_addr_len = sizeof(struct sockaddr_in);
+
+  memset(&server_addr, 0, sizeof(server_addr));
+  server_addr.sin_family = AF_INET;
+  inet_pton(AF_INET, server_ip, &server_addr.sin_addr);
+  server_addr.sin_port = htons(server_port);
+
+  int sockfd = socket(AF_INET, SOCK_DGRAM, 0);  
+
+  connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr));
+
+  getsockname(sockfd, (struct sockaddr *)local_addr, &local_addr_len);
+
+  close(sockfd);
+}
+
+//function to initialize the setup of pcap
+pcap_t *setup_pcap(const char *server_interface, const char *server_ip, const int server_port){
+  char errbuff[PCAP_ERRBUF_SIZE];
+  pcap_t *handle;
+
+  handle = pcap_create(server_interface, errbuff);
+  if(handle == NULL){
+    fprintf(stderr, "error in pcap_create: %s \n", errbuff);
+    return NULL;
+  }
+
+  pcap_set_snaplen(handle, BUFSIZ);
+  pcap_set_promisc(handle, 1);
+  pcap_set_timeout(handle, 1);
+  pcap_set_immediate_mode(handle, 1);
+
+  if(pcap_activate(handle) != 0){
+    fprintf(stderr, "error in pcap_activate: %s \n", errbuff);
+    pcap_close(handle);
+    return NULL;
+  }
+
+  struct bpf_program fp;
+  char filter[256];
+  snprintf(filter, sizeof(filter), "src host %s and tcp src port %d", server_ip, server_port);
+
+  if(pcap_compile(handle, &fp, filter, 0, PCAP_NETMASK_UNKNOWN) == -1){
+    fprintf(stderr, "Errore pcap_compile (%s): %s\n", filter, pcap_geterr(handle));
+    pcap_close(handle);
+    return NULL;
+  }
+
+  if(pcap_setfilter(handle, &fp) == -1){
+    fprintf(stderr, "Errore pcap_setfilter: %s\n", pcap_geterr(handle));
+    pcap_freecode(&fp);
+    pcap_close(handle);
+    return NULL;
+  }
+
+  pcap_freecode(&fp);
+
+  return handle;
+}
+
+
+struct timespec get_server_response_time(pcap_t *handle){
+
+  struct pcap_pkthdr *header;
+  const u_char *packet;
+  int result;
+
+  struct timespec stop = {0,0};
+  struct timespec ts;
+  int timeout_counter = 0;
+  const int MAX_RETRIES = 100;
+
+  while(1){
+    result = pcap_next_ex(handle, &header, &packet);
+
+    if(result == 1){
+      if(header->caplen < sizeof(struct iphdr) + sizeof(struct tcphdr)){
+        fprintf(stderr, "Packet too short to contain IP and TCP headers \n");
+        continue;
+      }
+
+      if(header->caplen < (sizeof(struct iphdr) + sizeof(struct tcphdr) + 5)){
+        fprintf(stderr, "Packet too short to contain application data \n");
+        continue;
+      }
+      clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+      return ts;
+    }else if(result == 0){
+      timeout_counter++;
+      if(timeout_counter >= MAX_RETRIES){
+        return stop;
+      }
+      continue;
+    }else{
+      fprintf(stderr, "Errore durante pcap_next_ex: %s\n", pcap_geterr(handle));
+      return stop;
+    }
+  }
+
+}
+
+
+void flush_pcap_buffer(pcap_t *handle){
+  struct pcap_pkthdr *header;
+  const u_char *packet;
+  int result;
+
+  while(1){
+    result = pcap_next_ex(handle, &header, &packet);
+    if(result != 1){
+      break;
+    }
+  }
 }

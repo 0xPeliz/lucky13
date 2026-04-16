@@ -32,7 +32,7 @@ int main(int argc, char *argv[])
   printf("Port: %d\n", port);
 
   //snprintf(ping_cmd, sizeof(ping_cmd), "ping -c 1 %s", server_ip);
-  system("ip neighbor show");
+  //system("ip neighbor show");
   //system(ping_cmd);
  
   SSL_CTX *ctx = setup_ssl_context();
@@ -62,7 +62,7 @@ int main(int argc, char *argv[])
 SSL_CTX *setup_ssl_context() {
   SSL_CTX *ctx = SSL_CTX_new(TLS_client_method());
 
-  if (!SSL_CTX_load_verify_locations(ctx, "server.crt", NULL)) {
+  if(!SSL_CTX_load_verify_locations(ctx, "server.crt", NULL)){
     ERR_print_errors_fp(stderr);
     SSL_CTX_free(ctx);
     return NULL;
@@ -74,8 +74,8 @@ SSL_CTX *setup_ssl_context() {
   return ctx;
 }
 
-//function to initialize the connections, SSL and TCP
-int initialize_connection(const char *server_ip, int port) {
+//function to initialize the connection TCP (create the channel)
+int initialize_connection(const char *server_ip, int port){
   struct sockaddr_in server_addr;
 
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -83,12 +83,12 @@ int initialize_connection(const char *server_ip, int port) {
   memset(&server_addr, 0, sizeof(server_addr));
   server_addr.sin_family = AF_INET;
   server_addr.sin_port = htons(port);
-  if (inet_pton(AF_INET, server_ip, &server_addr.sin_addr) <= 0) {
+  if(inet_pton(AF_INET, server_ip, &server_addr.sin_addr) <= 0){
     perror("Invalid address");
     exit(EXIT_FAILURE);
   }
 
-  if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+  if(connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0){
     perror("Connection error");
     exit(EXIT_FAILURE);
   }
@@ -104,15 +104,15 @@ int do_single_request(const char *server_ip, int port, SSL_CTX *ctx){
   int sockfd = initialize_connection(server_ip, port);
   SSL *ssl = SSL_new(ctx);
 
-  if (ssl == NULL) {
+  if(ssl == NULL){
     perror("SSL initialization error");
     exit(EXIT_FAILURE);
   }
 
-  system("ip neighbor show");
+  //system("ip neighbor show");
   SSL_set_fd(ssl, sockfd);
 
-  if (SSL_connect(ssl) <= 0) {
+  if(SSL_connect(ssl) <= 0){
     perror("SSL connection error");
     ERR_print_errors_fp(stderr);
     SSL_free(ssl);
@@ -125,7 +125,7 @@ int do_single_request(const char *server_ip, int port, SSL_CTX *ctx){
 
   ssize_t n = SSL_read(ssl, buffer, sizeof(buffer) - 1);
 
-  if (n > 0){
+  if(n > 0){
     result = 1;
     buffer[n] = '\0';
     printf("Server response: %s\n", buffer);
@@ -146,7 +146,7 @@ void sendRequests(const char *server_ip, int port, SSL_CTX *ctx) {
   char buffer[1024];
   int i = 0;
 
-  while (i < 1) {
+  while (i < 3) {
     do_single_request(server_ip, port, ctx);
     i++;
   }

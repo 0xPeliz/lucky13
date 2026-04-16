@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <signal.h>
+#include <ifaddrs.h>
 #include "../include/network.h"
 #include "../include/utility.h"
 
@@ -178,6 +179,35 @@ Byte *make_mask_first_bytes(int block_pos, const Data_packet *data_packet){
   return mask;
 } 
 
+//function to get the interface of server's communication (we need it for lipcap)
+char *get_server_interface(const char *server_ip, const int server_port){
+
+  struct sockaddr_in local_addr;
+  get_local_address(server_ip, server_port, &local_addr);
+
+  struct ifaddrs *ifaddr_list;
+  struct ifaddrs *ifaddr;
+  char *interface_name = NULL;
+  getifaddrs(&ifaddr_list);
+
+  if(ifaddr_list == NULL){
+    return NULL;
+  }
+  ifaddr = ifaddr_list;
+  do{
+    if(!(ifaddr->ifa_addr == NULL || ifaddr->ifa_addr->sa_family != AF_INET)){
+      struct sockaddr_in *paddr = (struct sockaddr_in *)ifaddr->ifa_addr;
+      if(paddr->sin_addr.s_addr == local_addr.sin_addr.s_addr){
+        interface_name = strdup(ifaddr->ifa_name);
+        break;
+      }
+    }
+    ifaddr = ifaddr->ifa_next;
+  }while(ifaddr != NULL);
+
+  freeifaddrs(ifaddr_list);
+  return interface_name;
+}
 
 
 
