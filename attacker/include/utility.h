@@ -36,6 +36,7 @@ void print_tls_header(Byte *data);
 Byte *make_mask(int block_pos, int byte_pos, const Data_packet *data_packet);
 Byte *make_mask_first_bytes(int block_pos, const Data_packet *data_packet);
 Byte *xor_block(Byte *block1, Byte *block2, unsigned int len);
+void modify_last_bytes(Data_packet *data_packet, int block_pos, int val_penultimate_byte, int val_last_byte);
 
 char *get_server_interface(const char *server_ip, const int server_port);
 

@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <signal.h>
 #include <unistd.h>
 
 #define DIM_BUFFER 1024
@@ -47,6 +48,8 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
+  signal(SIGPIPE, SIG_IGN);
+
   handle_connections(sockfd, ssl, ctx);
   
 
@@ -73,13 +76,13 @@ SSL_CTX *setup_ssl_context() {
   const SSL_METHOD *method = TLSv1_2_server_method();
   SSL_CTX *ctx = SSL_CTX_new(method);
 
-  if (!ctx) {
+  if(!ctx) {
     perror("SSL_CTX_Nex error");
     ERR_print_errors_fp(stderr);
     exit(EXIT_FAILURE);
   }
 
-  if (SSL_CTX_set_cipher_list(ctx, "AES128-SHA:AES256-SHA") <= 0) {
+  if(SSL_CTX_set_cipher_list(ctx, "AES128-SHA:AES256-SHA") <= 0){
     perror("SSL_CTX_set_cipher_list errorr");
     ERR_print_errors_fp(stderr);
     exit(EXIT_FAILURE);
@@ -87,47 +90,48 @@ SSL_CTX *setup_ssl_context() {
 
   SSL_CTX_set_options(ctx, SSL_OP_NO_TICKET);
 
-  if (ctx == NULL) {
+  if(ctx == NULL){
     perror("SSL context initialization error");
     exit(EXIT_FAILURE);
   }
 
-  if (SSL_CTX_use_certificate_file(ctx, "server.crt", SSL_FILETYPE_PEM) <= 0) {
+  if(SSL_CTX_use_certificate_file(ctx, "server.crt", SSL_FILETYPE_PEM) <= 0){
     perror("Certificate file error");
     ERR_print_errors_fp(stderr);
     SSL_CTX_free(ctx);
+
     exit(EXIT_FAILURE);
   }
 
-  if (SSL_CTX_use_PrivateKey_file(ctx, "server.key", SSL_FILETYPE_PEM) <= 0) {
+  if(SSL_CTX_use_PrivateKey_file(ctx, "server.key", SSL_FILETYPE_PEM) <= 0){
     perror("Private key file error");
     ERR_print_errors_fp(stderr);
     SSL_CTX_free(ctx);
     exit(EXIT_FAILURE);
   }
 
-  if (!SSL_CTX_check_private_key(ctx)) {
+  if(!SSL_CTX_check_private_key(ctx)){
     perror("Private key does not match the certificate public key");
     SSL_CTX_free(ctx);
     exit(EXIT_FAILURE);
   }
 
-   printf("SSL context initialized successfully \n");
+  printf("SSL context initialized successfully \n");
 
   return ctx;
 }
 
 //function to listen for incoming connections
-void handle_connections(int sockfd, SSL *ssl, SSL_CTX *ctx) {
+void handle_connections(int sockfd, SSL *ssl, SSL_CTX *ctx){
 
   int clientfd;
   struct sockaddr_in client_addr;
   socklen_t client_len = sizeof(client_addr);
   char buffer[DIM_BUFFER];
 
-  while (1) {
+  while(1){
     clientfd = accept(sockfd, (struct sockaddr *)&client_addr, &client_len);
-    if (clientfd < 0) {
+    if(clientfd < 0){
       perror("Accept error");
       continue;
     }
@@ -143,21 +147,20 @@ void handle_connections(int sockfd, SSL *ssl, SSL_CTX *ctx) {
       continue;
     }
     printf("SSL/TLS connection established with %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
-
     
-    ssize_t n = SSL_read(ssl, buffer, DIM_BUFFER);
+    ssize_t n = SSL_read(ssl, buffer, DIM_BUFFER - 1);
     if(n > 0){
       buffer[n] = '\0';
+      printf("Received request: %s\n", buffer);
+      const char *response = "Server received your request";
+      SSL_write(ssl, response, strlen(response));
+      SSL_shutdown(ssl);
+    }else{
+      printf("Alert TLS sent! \n");
     }
-    printf("Received request: %s\n", buffer);
-
-    const char *response = "Server received your request";
-
-    SSL_write(ssl, response, strlen(response));
-
-    SSL_shutdown(ssl);
-    close(clientfd);
+    
     SSL_free(ssl);
+    close(clientfd);
   }
 
 }

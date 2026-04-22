@@ -138,7 +138,7 @@ Byte *make_mask(int block_pos, int byte_pos, const Data_packet *data_packet){
   int i;
 
   for(i=0; i < 5; i++){
-    mask[i] == 0x00;
+    mask[i] = 0x00;
   }
 
   for(i=0; i < data_packet->data_len - 5; i++){
@@ -178,6 +178,26 @@ Byte *make_mask_first_bytes(int block_pos, const Data_packet *data_packet){
 
   return mask;
 } 
+
+//block_pos è un valore compreso tra 0 e 4 (blocchi dall'1 al 5)
+void modify_last_bytes(Data_packet *data_packet, int block_pos, int val_penultimate_byte, int val_last_byte){
+  int pos = 5 + ((block_pos-1) * 16 ) + 14;
+
+  if(pos + 1 >= data_packet->data_len){
+    fprintf(stderr, "Error: block position out of data length! \n");
+    return;
+  }
+
+  data_packet->data[pos] = 0x00;
+  data_packet->data[pos+1] = 0x00;
+
+  //printf("valore del penultimo byte prima della modifica: %02x, valore dell'ultimo byte prima della modifica: %02x \n", data_packet->data[pos], data_packet->data[pos+1]);
+
+  data_packet->data[pos] = val_penultimate_byte;
+  data_packet->data[pos+1] = val_last_byte;
+
+  //printf("valore del penultimo byte: %02x, valore dell'ultimo byte: %02x \n", data_packet->data[pos], data_packet->data[pos+1]);
+}
 
 //function to get the interface of server's communication (we need it for lipcap)
 char *get_server_interface(const char *server_ip, const int server_port){

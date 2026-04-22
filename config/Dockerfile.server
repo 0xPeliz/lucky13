@@ -14,7 +14,7 @@ RUN wget https://www.openssl.org/source/old/1.0.1/openssl-1.0.1c.tar.gz && tar -
 
 WORKDIR /lucky13_attack/openssl-1.0.1c
 
-RUN ./config shared --prefix=/usr/local/ssl --openssldir=/usr/local/ssl && \
+RUN ./config shared no-asm --prefix=/usr/local/ssl --openssldir=/usr/local/ssl && \
     make clean && \
     make && \
     make install_sw

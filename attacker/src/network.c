@@ -13,7 +13,7 @@
 //function to set a personalized iptables configuration on the client to receive packets
 void setup_network_interception() {
   char cmd[256];
-  char cmd_mark[256]; // Nuova stringa per la regola del mark
+  char cmd_mark[256]; 
   char port[6];
 
   snprintf(port, sizeof(port), "%d", port_server);
@@ -52,7 +52,6 @@ void restore_network_default() {
     system(cmd);
     set_ipforwarding(0);
   }
-  
 }
 
 //function to set IP forwarding, necessary for MITM proxy outiside localhost
@@ -82,21 +81,6 @@ void set_ipforwarding(int setting){
   close(fd);
 }
 
-void config_localhost_architecture(){
-  printf("Sono dentro alla configurazione dell'architettura per localhost \n");
-}
-
-
-void config_lan_architecture(){
-  printf("Sono dentro alla configurazione dell'architettura lan \n");
-}
-
-
-void config_internet_architecture(){
-  printf("Sono dentro alla configurazione dell'architettura internet \n");
-
-}
-
 //function to do the effective ARP spoofing attack to client and server
 pid_t arp_spoofing(const char *target_ip, const char *host_ip){
   pid_t pid = fork();
@@ -117,7 +101,7 @@ pid_t arp_spoofing(const char *target_ip, const char *host_ip){
   return pid;
 }
 
-
+//function to get local IP address and IP gateway address
 void get_network_info(char *local_ip, char *gateway_ip){
   FILE *fp;
   char line[256];
@@ -149,10 +133,11 @@ void get_network_info(char *local_ip, char *gateway_ip){
 
   fclose(fp);
 
+  /*
   if(!gateway_found){
     perror("Gateway not found!");
     return;
-  }
+  } */
 
   sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   if(sockfd < 0){
@@ -167,11 +152,10 @@ void get_network_info(char *local_ip, char *gateway_ip){
     struct sockaddr_in *ipaddr = (struct sockaddr_in *)&ifr.ifr_addr;
     strcpy(local_ip, inet_ntoa(ipaddr->sin_addr));
   }else{
-    perror("Errore in ioctl (Impossibile ricavare IP locale)");
+    perror("Error in ioctl to get local IP address! \n");
   }
 
   close(sockfd);
-
 }
 
 void get_local_address(const char *server_ip, const int server_port, struct sockaddr_in *local_addr){
