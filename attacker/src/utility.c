@@ -26,10 +26,17 @@ char *delete_char(char *str, char c) {
   return str;
 }
 
-
+//function to handle the termination signals, to restore the default network configuration and free the memory allocated for the active interface
 void signals_handler(int signal){
   printf("Termination signal received! \n");
   restore_network_default();
+
+  extern char *active_interface; 
+  if(active_interface != NULL){
+    restore_hardware_offloading(active_interface);
+    free(active_interface); 
+  }
+
   exit(0);
 }
 

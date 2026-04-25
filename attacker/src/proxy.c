@@ -37,6 +37,7 @@ static inline Byte *extract_application_data(Byte *payload, unsigned int payload
 
 void *do_attack_thread(void *arg);
 
+char *active_interface;
 Data_packet *data_packet;
 pthread_cond_t attack_thread_cond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t attack_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -109,9 +110,9 @@ int main(int argc, char *argv[]) {
   // selecting the operation mode
   switch(network_config){
     case 'l':
-      strncpy(ip_client, "127.0.0.1", INET_ADDRSTRLEN);
-      strncpy(ip_server, "127.0.0.1", INET_ADDRSTRLEN);
-      printf("LocalHost network configuration selected \n");
+      strncpy(ip_client, "10.0.0.2", INET_ADDRSTRLEN);
+      strncpy(ip_server, "10.0.0.1", INET_ADDRSTRLEN); 
+      printf("LocalHost/Cavo Diretto configuration selected \n");
       break;
     case 'n':
       get_network_info(my_ip, gateway_ip);
@@ -142,8 +143,15 @@ int main(int argc, char *argv[]) {
 
   printf("Starting MITM proxy \n");
 
-  char *server_interface = get_server_interface(ip_server, port_server);
-  pcap_handle = setup_pcap(server_interface, ip_server, port_server);
+  active_interface = get_server_interface(ip_server, port_server);
+
+  if(active_interface == NULL){
+    perror("Error in getting server interface! \n");
+    exit(EXIT_FAILURE);
+  }
+  disable_hardware_offloading(active_interface);
+
+  pcap_handle = setup_pcap(active_interface, ip_server, port_server);
 
   if(pcap_handle == NULL){
     perror("error in pcap handle setup ");
@@ -162,9 +170,9 @@ void extract_network_config() {
 
   switch (network_config) {
   case 'l':
-    strncpy(ip_client, "127.0.0.1", INET_ADDRSTRLEN);
-    strncpy(ip_server, "127.0.0.1", INET_ADDRSTRLEN);
-    printf("LocalHost network configuration selected \n");
+    strncpy(ip_client, "10.0.0.2", INET_ADDRSTRLEN);
+    strncpy(ip_server, "10.0.0.1", INET_ADDRSTRLEN); 
+    printf("LocalHost/Cavo Diretto configuration selected \n");
     break;
   case 'n':
     get_network_info(my_ip, gateway_ip);
@@ -538,7 +546,6 @@ void *do_attack_thread(void *arg){
   char *server_interface = get_server_interface(ip_server, port_server);
   printf("server interface: %s", server_interface);
 
-  unsigned short checksum;
   while(1==1){
     // In do_attack_thread:
     pthread_mutex_lock(&attack_thread_mutex);
@@ -558,14 +565,12 @@ void *do_attack_thread(void *arg){
     modify_packet(4,14);
 
     //printf("STAMPA NEL THREAD DEL PACCHETTO MODIFICATO \n");
-
     //print_data_blocks(data_packet->data, data_packet->data_len);
-
     //printf("Recalculate checksum! \n");
 
-    checksum = recalculate_checksum();
+    data_packet->tcp_header->check = recalculate_checksum();
 
-    data_packet->tcp_header->check = checksum;
+    data_packet->ip_header->check = recalculate_ip_checksum(data_packet->ip_header);
 
     //printf("Checksum: %04x \n", checksum);
    

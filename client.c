@@ -146,7 +146,7 @@ void sendRequests(const char *server_ip, int port, SSL_CTX *ctx) {
   char buffer[1024];
   int i = 0;
 
-  while (i < 65536) {
+  while (i < 3457000) {
     printf("Richiesta numero: %d \n", i + 1);
     do_single_request(server_ip, port, ctx);
     i++;

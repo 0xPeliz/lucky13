@@ -1,7 +1,6 @@
 #include "../include/network.h"
 #include <fcntl.h>
-#include <netinet/in.h>
-#include <netinet/ip.h>
+
 #include <netinet/tcp.h>
 #include <linux/netfilter.h>
 #include <sys/socket.h>
@@ -80,6 +79,41 @@ void set_ipforwarding(int setting){
 
   close(fd);
 }
+
+
+void disable_hardware_offloading(const char *interface){
+  if(interface == NULL){
+    perror("Interface is NULL! \n");
+    exit(EXIT_FAILURE);
+  }
+
+  char cmd[256];
+  snprintf(cmd, sizeof(cmd), "ethtool -K %s rx off tx off 2>/dev/null", interface);
+  if(system(cmd) != 0){
+    fprintf(stderr, "Error in disabling hardware offloading on interface %s! \n", interface);
+    exit(EXIT_FAILURE); 
+  }else{
+    printf("Hardware offloading disabled on interface %s! \n", interface);
+  }
+}
+
+//function to restore hardware offloading on the interface
+void restore_hardware_offloading(const char *interface){
+  if(interface == NULL){
+    perror("Interface is NULL! \n");
+    exit(EXIT_FAILURE);
+  }
+
+  char cmd[256];
+  snprintf(cmd, sizeof(cmd), "ethtool -K %s rx on tx on 2>/dev/null", interface);
+  if(system(cmd) != 0){
+    fprintf(stderr, "Error in restoring hardware offloading on interface %s! \n", interface);
+    exit(EXIT_FAILURE); 
+  }else{
+    printf("Hardware offloading restored on interface %s! \n", interface);
+  }
+}
+
 
 //function to do the effective ARP spoofing attack to client and server
 pid_t arp_spoofing(const char *target_ip, const char *host_ip){
@@ -227,11 +261,16 @@ struct timespec get_server_response_time(pcap_t *handle){
   struct pcap_pkthdr *header;
   const u_char *packet;
   int result;
+  char errbuf[PCAP_ERRBUF_SIZE];
 
   struct timespec stop = {0,0};
   struct timespec ts;
   int timeout_counter = 0;
-  const int MAX_RETRIES = 100;
+  const int MAX_RETRIES = 1000;
+
+  int eth_header_len = 14;
+
+  pcap_setnonblock(handle, 1, errbuf);
 
   while(1){
     result = pcap_next_ex(handle, &header, &packet);
@@ -242,13 +281,14 @@ struct timespec get_server_response_time(pcap_t *handle){
         continue;
       }
 
-      if(header->caplen < (sizeof(struct iphdr) + sizeof(struct tcphdr) + 5)){
+      if(header->caplen < (eth_header_len + sizeof(struct iphdr) + sizeof(struct tcphdr) + 5)){
         fprintf(stderr, "Packet too short to contain application data \n");
         continue;
       }
       clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
       return ts;
     }else if(result == 0){
+      usleep(100);
       timeout_counter++;
       if(timeout_counter >= MAX_RETRIES){
         return stop;
@@ -267,11 +307,32 @@ void flush_pcap_buffer(pcap_t *handle){
   struct pcap_pkthdr *header;
   const u_char *packet;
   int result;
+  char errbuf[PCAP_ERRBUF_SIZE];
+
+  pcap_setnonblock(handle, 1, errbuf);
 
   while(1){
     result = pcap_next_ex(handle, &header, &packet);
-    if(result != 1){
-      break;
+    if(result <= 0){
+      break; 
     }
   }
+}
+
+unsigned short recalculate_ip_checksum(struct iphdr *ip_header){
+  ip_header->check = 0;
+  unsigned long sum = 0;
+  unsigned short *ptr = (unsigned short *)ip_header;
+  int ip_header_len = ip_header->ihl * 4; //lenght of the ip header is expressed in 32-bit words, i need to convert it in bytes
+  int i;
+
+  for(i=0; i< ip_header_len / 2; i++){
+    sum += ptr[i];
+  }
+
+  while(sum >> 16){
+    sum = (sum & 0xFFFF) + (sum >> 16);
+  }
+
+  return (unsigned short)(~sum & 0xFFFF);
 }

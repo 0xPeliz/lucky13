@@ -9,6 +9,8 @@
 #include <pcap.h>
 #include <sys/time.h>
 #include <time.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
 
 
 extern char ip_client[INET_ADDRSTRLEN];
@@ -20,6 +22,9 @@ extern char op_mode;
 void setup_network_interception();
 void restore_network_default();
 void set_ipforwarding(int setting);
+void disable_hardware_offloading(const char *interface);
+void restore_hardware_offloading(const char *interface);
+
 int handle_tcp_packet(unsigned char *payload, int payload_len);
 int handle_tls_data(unsigned char *application_payload, unsigned int application_payload_size);
 
@@ -35,5 +40,7 @@ pcap_t *setup_pcap(const char *server_interface, const char *server_ip, const in
 struct timespec get_server_response_time(pcap_t *handle);
 
 void flush_pcap_buffer(pcap_t *handle);
+
+unsigned short recalculate_ip_checksum(struct iphdr *ip_header);
 
 #endif
