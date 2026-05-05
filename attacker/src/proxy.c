@@ -37,6 +37,8 @@ static inline Byte *extract_application_data(Byte *payload, unsigned int payload
 
 void *do_attack_thread(void *arg);
 
+static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data);
+
 char *active_interface;
 Data_packet *data_packet;
 pthread_cond_t attack_thread_cond = PTHREAD_COND_INITIALIZER;
@@ -57,8 +59,6 @@ char ip_server[INET_ADDRSTRLEN];
 int port_server = 5000;
 char network_config;
 char op_mode;
-
-static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data);
 
 int main(int argc, char *argv[]) {
 
@@ -400,12 +400,6 @@ int analyze_application_data(Byte *payload, int payload_len){
 
 }
 
-/*
-  devo tenere traccia di che byte utilizzare e di quale byte modificare
-  es: byte 0x00 in ultima pos, poi 0x01, poi 0x02, ecc... fino a 0xff, poi ricomincio da 0x01
-  (il byte che ha il minore tempo diu risposta è quello corretto)
-*/
-
 //function to modify the packet
 void modify_packet(int block_pos, int byte_pos){
 
@@ -432,7 +426,6 @@ void modify_packet(int block_pos, int byte_pos){
 
 }
 
-//TROVARE UNA SOLUZIONE MIGLIORE ALLA GESTIONE DEL -5 SULLA GRANDEZZA DEL PACCHETTO DATA
 
 //function to recalculate the TCP checksum (provare dopo a spostarla in utility.c passando come paramento const Data_packet **)
 unsigned short recalculate_checksum(){
@@ -502,17 +495,17 @@ void send_modified_packet(){
   int mark = 1;
 
   if(smp_fd < 0){
-    perror("Errore creazione socket");
+    perror("Socket creation error! \n");
     return;
   }
   
   if(setsockopt(smp_fd, IPPROTO_IP, IP_HDRINCL, &hincl, sizeof(hincl)) < 0){
-    perror("Errore nel settare IP_HDRINCL");
+    perror("IP_HDRINCL setting error");
   }
 
 
   if(setsockopt(smp_fd, SOL_SOCKET, SO_MARK, &mark, sizeof(mark)) < 0){
-    perror("Errore nel settare SO_MARK");
+    perror("SO_MARK setting error");
   }
 
   char *raw_packet;

@@ -12,6 +12,9 @@ int initialize_connection(const char *server_ip, int port);
 int do_single_request(const char *server_ip, int port, SSL_CTX *ctx); 
 void sendRequests(const char *server_ip, int port, SSL_CTX *ctx); // funzione per mandare dati al server
 int sendCookie(SSL *ssl);
+void right_shift();
+
+char cookie_payload[] = "COOKIE=cookie_super_segreto567890123456789";
 
 int main(int argc, char *argv[]) 
 {
@@ -119,8 +122,6 @@ int do_single_request(const char *server_ip, int port, SSL_CTX *ctx){
     exit(EXIT_FAILURE);
   }
 
-  const char *cookie_payload = "COOKIE=cookie_super_segreto5678901234";
-
   SSL_write(ssl, cookie_payload, strlen(cookie_payload));
 
   ssize_t n = SSL_read(ssl, buffer, sizeof(buffer) - 1);
@@ -146,10 +147,33 @@ void sendRequests(const char *server_ip, int port, SSL_CTX *ctx) {
   char buffer[1024];
   int i = 0;
 
-  while (i < 3457000) {
+  //dopo L richieste si esegue lo shift del cookie
+  while (i < 671232) {
     printf("Richiesta numero: %d \n", i + 1);
     do_single_request(server_ip, port, ctx);
     i++;
   }
 
 }
+
+//function to shift the cookie payload to the right by one position
+void right_shift(){
+
+  int i = strlen(cookie_payload) - 1;
+
+  for(; i > 0; i --){
+    if(cookie_payload[i] != '\0'){
+      cookie_payload[i] = cookie_payload[i-1];
+    }
+  }
+
+  cookie_payload[i] = 'A';
+}
+
+
+/**
+ * implementare il filling perfetto del cookie all'interno del pacchetto, deve occupare esattamente 42 byte(o il valore che serve)
+ * 
+ * implementare lo scorrimento del cookie verso destra di una posizione ogni tot esecuzioni. (decidere se gestire in modo automatico lo spostamento o sotto richiesta del proxy)
+ * 
+ * /
