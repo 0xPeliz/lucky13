@@ -147,13 +147,13 @@ void sendRequests(const char *server_ip, int port, SSL_CTX *ctx) {
   char buffer[1024];
   int i = 0;
 
+  //numero totale di richieste 671232
   //dopo L richieste si esegue lo shift del cookie
-  while (i < 671232) {
+  while (i < 65536) {
     printf("Richiesta numero: %d \n", i + 1);
     do_single_request(server_ip, port, ctx);
     i++;
   }
-
 }
 
 //function to shift the cookie payload to the right by one position
@@ -176,4 +176,4 @@ void right_shift(){
  * 
  * implementare lo scorrimento del cookie verso destra di una posizione ogni tot esecuzioni. (decidere se gestire in modo automatico lo spostamento o sotto richiesta del proxy)
  * 
- * /
+ */
