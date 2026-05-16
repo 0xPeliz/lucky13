@@ -2,6 +2,7 @@
 #define UTILITY_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
@@ -9,6 +10,8 @@
 #define ANSI_COLOR_BLUE    "\x1b[34m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
 #define BOLD_GREEN "\033[1;32m"
+
+#define L_SIZE 10
 
 typedef unsigned char Byte;
 
@@ -24,6 +27,20 @@ typedef struct Data_packet{
   //unsigned int header_data_len; //num of byte of header for data
   //unsigned int real_data_len; //num of real data byte
 }Data_packet;
+
+//struct to pass the measurements to the python script for the last and penultimate bytes attack
+struct first_attack_result{
+  int pos_byte; //posizione del byte all'interno del cookie che sto provando ad indovinare
+  //matrice che contiene i tempi misurati (65536 righe e L colonne, per ogni possibile valore del byte modificato)
+  int64_t time_meas[65536][L_SIZE];  //time measurements matrix
+};
+
+//struct to pass the measurements to the python script for the penultimate byte attack
+struct attack_result{
+
+  int64_t time_meas[256][L_SIZE];
+};
+
 
 char *delete_char(char *str, char c);
 void signals_handler(int signal); //function to handle the SIGINT signal, to restore the default network settings when the user presses CTRL+C
