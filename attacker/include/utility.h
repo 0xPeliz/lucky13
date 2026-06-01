@@ -43,6 +43,8 @@ struct attack_result{
 
 
 char *delete_char(char *str, char c);
+void clone_packet(const Data_packet *original_packet, Data_packet *cloned_packet);
+void allocate_packet(const Data_packet *original_packet, Data_packet *new_packet);
 void signals_handler(int signal); //function to handle the SIGINT signal, to restore the default network settings when the user presses CTRL+C
 void print_application_data(Byte *application_data, unsigned int application_data_size);
 void catch_signals();

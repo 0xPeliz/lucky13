@@ -4,8 +4,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
+#define L 10  //numero di tentativi per ogni byte
 
 SSL_CTX *setup_ssl_context();
 int initialize_connection(const char *server_ip, int port);
@@ -14,7 +17,9 @@ void sendRequests(const char *server_ip, int port, SSL_CTX *ctx); // funzione pe
 int sendCookie(SSL *ssl);
 void right_shift();
 
-char cookie_payload[] = "COOKIE=cookie_super_segreto567890123456789";
+char cookie_payload[] = "AAAAAAAAAAAAAAAAAAAAAACOOKIE=cookie_super_segreto567890123456789";
+bool first_bytes = true;
+int counter = 0;
 
 int main(int argc, char *argv[]) 
 {
@@ -149,19 +154,28 @@ void sendRequests(const char *server_ip, int port, SSL_CTX *ctx) {
 
   //numero totale di richieste 671232
   //dopo L richieste si esegue lo shift del cookie
-  while (i < 655360) {
+  while (i < 100000000) {
     printf("Richiesta numero: %d \n", i + 1);
     do_single_request(server_ip, port, ctx);
     i++;
+    if(first_bytes && counter == L * 65536){
+      right_shift();
+      counter = 0;
+      first_bytes = false;
+    }else if(!first_bytes && counter == L * 256){
+      counter = 0;
+      right_shift();
+    }
+    counter++;
   }
 }
 
 //function to shift the cookie payload to the right by one position
 void right_shift(){
 
-  int i = strlen(cookie_payload) - 1;
+  int i;
 
-  for(; i > 0; i --){
+  for(i = strlen(cookie_payload) -1; i > 0; i --){
     if(cookie_payload[i] != '\0'){
       cookie_payload[i] = cookie_payload[i-1];
     }

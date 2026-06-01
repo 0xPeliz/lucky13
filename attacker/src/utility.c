@@ -6,6 +6,10 @@
 #include <stdint.h>
 #include <signal.h>
 #include <ifaddrs.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
+#include <netinet/tcp.h>
 #include "../include/network.h"
 #include "../include/utility.h"
 
@@ -236,7 +240,51 @@ char *get_server_interface(const char *server_ip, const int server_port){
   return interface_name;
 }
 
+//function to clone a data packet struct (original packet) in an another data_packet (it just clone information, it doesn't allocate memory for the new packet and its fields)
+void clone_packet(const Data_packet *original_packet, Data_packet *cloned_packet){
+  
+  memcpy(cloned_packet->packet, original_packet->packet, original_packet->len);
+  cloned_packet->len = original_packet->len;
 
+  memcpy(cloned_packet->ip_header, original_packet->ip_header, sizeof(struct iphdr));
+  cloned_packet->ip_header_len = original_packet->ip_header_len;
+
+  memcpy(cloned_packet->tcp_header, original_packet->tcp_header, sizeof(struct tcphdr));
+  cloned_packet->tcp_header_len = original_packet->tcp_header_len;
+
+  memcpy(cloned_packet->data, original_packet->data, sizeof(Byte) * original_packet->data_len);
+  cloned_packet->data_len = original_packet->data_len;
+}
+
+//function to allocate memory for a new data_packet taking lengths from another created data_packet (original_packet)
+void allocate_packet(const Data_packet *original_packet, Data_packet *new_packet){
+  printf("Sono prima della malloc in allocate_packet! \n");
+  new_packet->packet = (Byte *)malloc(sizeof(Byte) * original_packet->len);
+  if(new_packet->packet == NULL){
+    perror("Error allocating memory for cloned_packet packet! \n");
+    exit(EXIT_FAILURE);
+  }
+
+  new_packet->ip_header = (struct iphdr *)malloc(sizeof(struct iphdr));
+  if(new_packet->ip_header == NULL){
+    perror("Error allocating memory for cloned_packet ip_header! \n");
+    exit(EXIT_FAILURE);
+  }
+
+  new_packet->tcp_header = (struct tcphdr *)malloc(sizeof(struct tcphdr));
+  if(new_packet->tcp_header == NULL){
+    perror("Error allocating memory for cloned_packet tcp_header! \n");
+    exit(EXIT_FAILURE);
+  }
+
+  new_packet->data = (Byte *)malloc(sizeof(Byte) * original_packet->data_len);
+  if(new_packet->data == NULL){
+    perror("Error allocating memory for cloned_packet data! \n");
+    exit(EXIT_FAILURE);
+  }
+
+}
+  
 
 
 
