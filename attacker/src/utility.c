@@ -99,9 +99,9 @@ bool check_data_length(Byte *data, unsigned int data_len){
 void print_data_blocks(Byte *data, unsigned int data_len){
   printf(" \n Printing of the data blocks \n");
   
-  for(int i=0; i < data_len - 5; i++){
+  for(int i=0; i < data_len - 5; i++){ //5 byte = header TLS of the application data
     if(i % 16 == 0){
-      printf("\n B%d -> ", (i/16));
+      printf("\n B%d -> ", (i/16)); //16 byte dimension of a block
     }
     printf("%02x ", data[i+5]);
   }
@@ -116,7 +116,7 @@ void print_blocks(Byte *data, unsigned int data_len){
     printf("%02x ", data[i+5]);
   }
   printf("\n");
-}
+} 
 
 void print_tls_header(Byte *data){
   int i;
@@ -199,13 +199,15 @@ void modify_last_bytes(Data_packet *data_packet, int block_pos, int val_penultim
     return;
   }
 
-  data_packet->data[pos] = 0x00;
-  data_packet->data[pos+1] = 0x00;
+  // 5 + 3 * 16 = 53 
+  Byte original_c14 = data_packet->data[5 + ((4-1) * 16) + 14];
+  Byte original_c15 = data_packet->data[5 + ((4-1) * 16) + 15];
 
-  //printf("valore del penultimo byte prima della modifica: %02x, valore dell'ultimo byte prima della modifica: %02x \n", data_packet->data[pos], data_packet->data[pos+1]);
+  Byte expected_padding = 0x01;
 
-  data_packet->data[pos] = val_penultimate_byte;
-  data_packet->data[pos+1] = val_last_byte;
+  // Calcolo dinamico basato sul ciphertext corrente
+  data_packet->data[5 + ((4-1) * 16) + 14] = original_c14 ^ val_penultimate_byte ^ expected_padding;
+  data_packet->data[5 + ((4-1) * 16) + 15] = original_c15 ^ val_last_byte ^ expected_padding;
 
   //printf("valore del penultimo byte: %02x, valore dell'ultimo byte: %02x \n", data_packet->data[pos], data_packet->data[pos+1]);
 }
@@ -284,7 +286,4 @@ void allocate_packet(const Data_packet *original_packet, Data_packet *new_packet
   }
 
 }
-  
-
-
 

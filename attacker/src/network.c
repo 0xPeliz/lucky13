@@ -44,8 +44,8 @@ void restore_network_default() {
   if(network_config == 'l'){
     snprintf(cmd_mark, sizeof(cmd_mark), "iptables -D OUTPUT -m mark --mark 1 -j ACCEPT");
     system(cmd_mark);
-    system(cmd);
     snprintf(cmd, sizeof(cmd), "iptables -D OUTPUT -d %s -p tcp --dport %s -j NFQUEUE --queue-num 0", ip_server, port);
+    system(cmd);
   }else if(network_config == 'n' || network_config == 'i'){
     snprintf(cmd, sizeof(cmd), "iptables -D FORWARD -s %s -d %s -p tcp --dport %s -j NFQUEUE --queue-num 0", ip_client, ip_server, port);
     system(cmd);

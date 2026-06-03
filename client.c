@@ -154,7 +154,7 @@ void sendRequests(const char *server_ip, int port, SSL_CTX *ctx) {
 
   //numero totale di richieste 671232
   //dopo L richieste si esegue lo shift del cookie
-  while (i < 100000000) {
+  while (i < 655360) {
     printf("Richiesta numero: %d \n", i + 1);
     do_single_request(server_ip, port, ctx);
     i++;
