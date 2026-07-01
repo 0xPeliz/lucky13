@@ -200,14 +200,14 @@ void modify_last_bytes(Data_packet *data_packet, int block_pos, int val_penultim
   }
 
   // 5 + 3 * 16 = 53 
-  Byte original_c14 = data_packet->data[5 + ((4-1) * 16) + 14];
-  Byte original_c15 = data_packet->data[5 + ((4-1) * 16) + 15];
+  Byte original_c14 = data_packet->data[5 + ((5-1) * 16) + 14];
+  Byte original_c15 = data_packet->data[5 + ((5-1) * 16) + 15];
 
   Byte expected_padding = 0x01;
 
   // Calcolo dinamico basato sul ciphertext corrente
-  data_packet->data[5 + ((4-1) * 16) + 14] = original_c14 ^ val_penultimate_byte ^ expected_padding;
-  data_packet->data[5 + ((4-1) * 16) + 15] = original_c15 ^ val_last_byte ^ expected_padding;
+  data_packet->data[5 + ((5-1) * 16) + 14] = original_c14 ^ val_penultimate_byte ^ expected_padding;
+  data_packet->data[5 + ((5-1) * 16) + 15] = original_c15 ^ val_last_byte ^ expected_padding;
 
   //printf("valore del penultimo byte: %02x, valore dell'ultimo byte: %02x \n", data_packet->data[pos], data_packet->data[pos+1]);
 }

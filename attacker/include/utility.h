@@ -11,7 +11,7 @@
 #define ANSI_COLOR_RESET   "\x1b[0m"
 #define BOLD_GREEN "\033[1;32m"
 
-#define L_SIZE 10
+#define L_SIZE 2000
 #define data_dimension 85
 
 typedef unsigned char Byte;

