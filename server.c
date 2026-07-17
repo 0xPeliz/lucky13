@@ -92,6 +92,7 @@ SSL_CTX *setup_ssl_context() {
   }
 
   SSL_CTX_set_options(ctx, SSL_OP_NO_TICKET);
+  SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_OFF);
 
   if(ctx == NULL){
     perror("SSL context initialization error");
@@ -147,6 +148,7 @@ void handle_connections(int sockfd, SSL *ssl, SSL_CTX *ctx){
       ERR_print_errors_fp(stderr);
       SSL_free(ssl);
       close(clientfd);
+      ERR_clear_error();
       continue;
     }
     printf("SSL/TLS connection established with %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
@@ -164,6 +166,7 @@ void handle_connections(int sockfd, SSL *ssl, SSL_CTX *ctx){
     
     SSL_free(ssl);
     close(clientfd);
+    ERR_clear_error();
   }
 
 }

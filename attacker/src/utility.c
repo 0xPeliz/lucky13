@@ -199,7 +199,7 @@ void modify_last_bytes(Data_packet *data_packet, int block_pos, int val_penultim
     return;
   }
 
-  // 5 + 3 * 16 = 53 
+  // 5 + 4 * 16 + 14 = 5 + 64 + 14 = 83
   Byte original_c14 = data_packet->data[5 + ((5-1) * 16) + 14];
   Byte original_c15 = data_packet->data[5 + ((5-1) * 16) + 15];
 
