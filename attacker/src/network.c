@@ -9,6 +9,12 @@
 #include <stdbool.h>
 #include <sys/socket.h>
 
+static inline uint64_t rdtsc() {
+    unsigned int lo, hi;
+    __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
+    return ((uint64_t)hi << 32) | lo;
+}
+
 //function to set a personalized iptables configuration on the client to receive packets
 void setup_network_interception() {
   char cmd[256];
@@ -255,99 +261,18 @@ pcap_t *setup_pcap(const char *server_interface, const char *server_ip, const in
   return handle;
 }
 
-/*
-struct timespec get_server_response_time(pcap_t *handle){
+uint64_t get_server_response_time(pcap_t *handle, uint64_t start_time) {
 
   struct pcap_pkthdr *header;
   const u_char *packet;
   int result;
   char errbuf[PCAP_ERRBUF_SIZE];
-
-  struct timespec stop = {0,0};
-  struct timespec ts;
-  int timeout_counter = 0;
-  const int MAX_RETRIES = 1000;
-
-  int eth_header_len = 14;
-
-  pcap_setnonblock(handle, 1, errbuf);
-
-  while(1){
-    result = pcap_next_ex(handle, &header, &packet);
-
-    if(result == 1){
-      if(header->caplen < sizeof(struct iphdr) + sizeof(struct tcphdr)){
-        fprintf(stderr, "Packet too short to contain IP and TCP headers \n");
-        continue;
-      }
-
-      if(header->caplen < (eth_header_len + sizeof(struct iphdr) + sizeof(struct tcphdr) + 5)){
-        fprintf(stderr, "Packet too short to contain application data \n");
-        continue;
-      }
-      clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
-      return ts;
-    }else if(result == 0){
-      usleep(100);
-      timeout_counter++;
-      if(timeout_counter >= MAX_RETRIES){
-        return stop;
-      }
-      continue;
-    }else{
-      fprintf(stderr, "Errore durante pcap_next_ex: %s\n", pcap_geterr(handle));
-      return stop;
-    }
-  }
-
-} */
-
-/*
-struct timespec get_server_response_time(pcap_t *handle, struct timespec start_time){
-  struct pcap_pkthdr *header;
-  const u_char *packet;
-  int result;
-  char errbuf[PCAP_ERRBUF_SIZE];
-  struct timespec stop = {0,0};
-  struct timespec ts;
-  int eth_header_len = 14;
-
-  pcap_setnonblock(handle, 1, errbuf);
-
-  while(1){
-    result = pcap_next_ex(handle, &header, &packet);
-
-    if(result == 1){
-      clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
-      return ts;
-    } else if(result == 0) {
-      clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
-      long long elapsed = ((long long)(ts.tv_sec - start_time.tv_sec) * 1000000000LL) + (ts.tv_nsec - start_time.tv_nsec);
-
-      if(elapsed > 100000000LL){
-        return stop;
-      }
-      continue;
-    } else {
-      return stop;
-    }
-  }
-} */
-
-struct timespec get_server_response_time(pcap_t *handle, struct timespec start_time) {
-
-  struct pcap_pkthdr *header;
-  const u_char *packet;
-  int result;
-  char errbuf[PCAP_ERRBUF_SIZE];
-  struct timespec stop = {0,0};
-  struct timespec ts;
   int eth_header_len = 14;
 
   //da chiarire se funziona
   int link_type = pcap_datalink(handle);
   if (link_type == DLT_LINUX_SLL) {
-      eth_header_len = 16;
+    eth_header_len = 16;
   }else if (link_type == DLT_NULL) {
     eth_header_len = 4; 
   }
@@ -370,8 +295,8 @@ struct timespec get_server_response_time(pcap_t *handle, struct timespec start_t
                   const u_char *tls_data = packet + payload_offset;
                   // Controlliamo se è il TLS Alert (0x15) generato dall'errore di padding/MAC
                   if(tls_data[0] == 0x15){
-                      clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
-                      return ts; // FERMO IL CRONOMETRO SOLO ORA
+                      //clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+                      return rdtsc(); // FERMO IL CRONOMETRO SOLO ORA
                   }
               }
           }
@@ -381,16 +306,13 @@ struct timespec get_server_response_time(pcap_t *handle, struct timespec start_t
       
     } else if(result == 0) {
       // Busy-wait per massima precisione al nanosecondo
-      clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
-      long long elapsed = ((long long)(ts.tv_sec - start_time.tv_sec) * 1000000000LL) + (ts.tv_nsec - start_time.tv_nsec);
-      
-      // Timeout 100ms
-      if(elapsed > 100000000LL){
-        return stop;
+      uint64_t current_time = rdtsc();
+      if(current_time - start_time > 1000000000ULL) { // Timeout di 1 secondo
+        return 0; // Nessuna risposta dal server entro il timeout
       }
       continue;
     } else {
-      return stop;
+      return 0;
     }
   }
 }

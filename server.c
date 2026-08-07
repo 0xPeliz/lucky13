@@ -91,8 +91,11 @@ SSL_CTX *setup_ssl_context() {
     exit(EXIT_FAILURE);
   }
 
-  SSL_CTX_set_options(ctx, SSL_OP_NO_TICKET);
-  SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_OFF);
+  //SSL_CTX_set_options(ctx, SSL_OP_NO_TICKET);
+  //SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_OFF);
+  SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_SERVER);
+
+  SSL_CTX_set_session_id_context(ctx, (const unsigned char *)"lucky13", 7);
 
   if(ctx == NULL){
     perror("SSL context initialization error");

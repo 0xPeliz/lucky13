@@ -9,7 +9,7 @@
 #include <unistd.h>
 #include <netinet/tcp.h>
 
-#define L 2000  //numero di tentativi per ogni byte
+#define L 5000  //numero di tentativi per ogni byte
 
 SSL_CTX *setup_ssl_context();
 int initialize_connection(const char *server_ip, int port);
@@ -18,7 +18,7 @@ void sendRequests(const char *server_ip, int port, SSL_CTX *ctx); // funzione pe
 int sendCookie(SSL *ssl);
 void right_shift();
 
-char cookie_payload[] = "AAAAAAAAAAAAAAAAAAAAAACOOKIE=cookie_super_segreto567890123456789";
+char cookie_payload[] = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBAAAAAAAAAAAAAAAAAAAAAACOOKIE=cookie_super_segreto567890123456789"; //dalla prima A in poi sono 64byte
 bool first_bytes = true;
 int counter = 0;
 
@@ -153,15 +153,15 @@ void sendRequests(const char *server_ip, int port, SSL_CTX *ctx) {
 
   SSL *ssl;
   char buffer[1024];
-  int i = 0;
+  unsigned int i = 0;
 
   //numero totale di richieste 671232
   //dopo L richieste si esegue lo shift del cookie
-  while (i < L*(256*256)) {
-    printf("Richiesta numero: %d \n", i + 1);
+  while (i < L*(256)) {  // nel client vero deve essere L * 256 * 256
+    //printf("Richiesta numero: %d \n", i + 1);
     do_single_request(server_ip, port, ctx);
     i++;
-    if(first_bytes && counter == L * 65536){
+    if(first_bytes && counter == L * 256){  // nel client vero deve essere L * 256 * 256
       right_shift();
       counter = 0;
       first_bytes = false;

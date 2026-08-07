@@ -38,7 +38,7 @@ pid_t arp_spoofing(const char *tagert_ip, const char *host_ip);
 void get_local_address(const char *server_ip, const int server_port, struct sockaddr_in *local_addr);
 pcap_t *setup_pcap(const char *server_interface, const char *server_ip, const int server_port);
 //struct timespec get_server_response_time(pcap_t *handle);
-struct timespec get_server_response_time(pcap_t *handle, struct timespec start_time);
+uint64_t get_server_response_time(pcap_t *handle, uint64_t start_time);
 
 void flush_pcap_buffer(pcap_t *handle);
 

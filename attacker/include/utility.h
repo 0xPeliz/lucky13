@@ -11,8 +11,8 @@
 #define ANSI_COLOR_RESET   "\x1b[0m"
 #define BOLD_GREEN "\033[1;32m"
 
-#define L_SIZE 2000
-#define data_dimension 85
+#define L_SIZE 5000
+#define data_dimension 341 // before it was 85 bytes (only one block of data), now it is 341 bytes
 
 typedef unsigned char Byte;
 
@@ -59,6 +59,5 @@ Byte *xor_block(Byte *block1, Byte *block2, unsigned int len);
 void modify_last_bytes(Data_packet *data_packet, int block_pos, int val_penultimate_byte, int val_last_byte);
 
 char *get_server_interface(const char *server_ip, const int server_port);
-
 
 #endif

