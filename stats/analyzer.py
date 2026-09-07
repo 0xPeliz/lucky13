@@ -100,23 +100,21 @@ def run_statistical_analysis(memory_view, num_rows, num_cols):
     # 1. ORDINA LA MATRICE: dal tempo più veloce al più lento per ogni singolo byte
     sorted_matrix = np.sort(time_matrix, axis=1)
     
-    # 2. ISOLA I GIRI PERFETTI (Filtro per la Positive Skew)
-    # Teniamo solo il 10% dei tempi più bassi in assoluto. 
-    # Questi sono i pacchetti che non hanno subito ritardi dal Kernel Linux.
-    keep_count = int(num_cols * 0.10)
+    # 2. ISOLA I GIRI PERFETTI (Filtro per il limite fisico dell'hardware)
+    # Ignoriamo le percentuali. Prendiamo ESATTAMENTE i 25 pacchetti 
+    # più veloci in assoluto su 50.000. Questi sono i pacchetti che hanno 
+    # attraversato il Kernel senza alcuna interruzione.
+    keep_count = 25
     
-    # Se abbiamo un numero sufficiente di misurazioni (es. 5000), prendiamo da 0 a keep_count
-    if num_cols > 2:
-        # Prende tutte le righe (:), ma solo le prime 'keep_count' colonne 
-        # (cioè i tempi più bassi, avendo appena ordinato la matrice)
+    if num_cols > keep_count:
         clean_time_matrix = sorted_matrix[:, :keep_count]
     else:
         clean_time_matrix = sorted_matrix
 
-    # 3. CALCOLO DELLA MEDIA DEI GIRI PERFETTI
-    # Non prendiamo il minimo assoluto (indice 0) perché potrebbe essere 
-    # un'anomalia hardware irripetibile. Facciamo la media dei tempi migliori.
-    mean_times = np.median(clean_time_matrix, axis=1)
+    # 3. CALCOLO DELLA MEDIA DEL PICCO HARDWARE
+    # Usiamo np.mean sui 25 campioni dorati per livellare fluttuazioni 
+    # di 1-2 nanosecondi, estraendo il segnale puro del silicio.
+    mean_times = np.mean(clean_time_matrix, axis=1)
 
     # 4. TROVA IL VINCITORE (argmin)
     # Secondo la teoria di AlFardan-Paterson, il padding valido impiega un 

@@ -9,7 +9,7 @@
 #include <unistd.h>
 #include <netinet/tcp.h>
 
-#define L 5000  //numero di tentativi per ogni byte
+#define L 50000  //numero di tentativi per ogni byte
 
 SSL_CTX *setup_ssl_context();
 int initialize_connection(const char *server_ip, int port);
@@ -33,12 +33,14 @@ int main(int argc, char *argv[])
     perror("Missing server address argument");
     exit(EXIT_FAILURE);
   }
-
+  
   server_ip = argv[1];
   port = atoi(argv[2]);
 
   printf("Ip server: %s\n", server_ip);
   printf("Port: %d\n", port);
+
+  printf("Numero di caratteri del cookie: %lu \n",strlen(cookie_payload));
 
   //snprintf(ping_cmd, sizeof(ping_cmd), "ping -c 1 %s", server_ip);
   //system("ip neighbor show");
@@ -46,7 +48,7 @@ int main(int argc, char *argv[])
  
   SSL_CTX *ctx = setup_ssl_context();
 
-  if (ctx == NULL) {
+  if(ctx == NULL) {
     perror("SSL context initialization error");
     exit(EXIT_FAILURE);
   }

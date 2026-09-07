@@ -577,10 +577,10 @@ void send_modified_packet(uint64_t *start){
 void *do_attack_thread(void *arg){
     // 1. FORZIAMO LA FASE 2 FIN DAL PRIMO PACCHETTO
   bool first_attack = false; 
-  int n_attemps = 0;
+  unsigned int n_attemps = 0;
   
   // 2. IMPOSTIAMO UN NUMERO DI TEST ALTO PER BATTERE IL RUMORE
-  int L_TEST = 5000; 
+  unsigned long int L_TEST = 50000; 
 
   struct attack_result *a_result = calloc(1, sizeof(struct attack_result));
   Byte expected_padding = 0x01; 
@@ -646,6 +646,10 @@ void *do_attack_thread(void *arg){
     // SALVATAGGIO NELLA MATRICE
     a_result->time_meas[row][column] = (int64_t)delta;
     n_attemps++;
+
+    int n_test = (L_TEST) / 256;
+
+    printf("TEST NUMERO: %d \n", n_test);
 
     // 4. CONDIZIONE DI USCITA (1.280.000 pacchetti)
     if(n_attemps == (L_TEST * 256)){

@@ -11,7 +11,7 @@
 #define ANSI_COLOR_RESET   "\x1b[0m"
 #define BOLD_GREEN "\033[1;32m"
 
-#define L_SIZE 5000
+#define L_SIZE 50000
 #define data_dimension 341 // before it was 85 bytes (only one block of data), now it is 341 bytes
 
 typedef unsigned char Byte;

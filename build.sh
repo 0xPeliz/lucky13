@@ -14,10 +14,10 @@ echo ""
 
 echo "=== [2/2] Costruzione e avvio della LAN simulata con Docker Compose ==="
 # Entra nella cartella config dove risiede il docker-compose.yml
-cd config/
+# cd config/
 
 # Avvia l'infrastruttura distruggendo container vecchi e forzando la ricompilazione
-docker compose up -d --build
+# docker compose up -d --build
 
 echo ""
 echo "--> Automazione completata! Il laboratorio Lucky13 è attivo e isolato."
