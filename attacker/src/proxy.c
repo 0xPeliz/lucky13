@@ -3,7 +3,6 @@
 #include "../include/network.h"
 #include "../../stats/stats.h"
 #include <signal.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
@@ -43,6 +42,8 @@ static bool is_tls_record(const Byte *payload, unsigned int application_payload_
 static bool is_tls_handshake(const Byte *payload, unsigned int application_payload_len);
 static bool is_tls_data(const Byte *payload, unsigned int application_payload_len);
 int update_tls_record_for_truncation(Byte *application_payload, unsigned int *application_payload_size);
+
+
 
 static inline uint64_t rdtsc() {
   unsigned int lo, hi, aux;
@@ -88,19 +89,6 @@ int main(int argc, char *argv[]) {
     op_mode = argv[1][1];
   }
 
-  /*
-  switch(op_mode) {
-    case 'd':
-      printf("Dataset creation mode selected! \n");
-      break;
-    case 'a':
-      printf("Attack mode selected! \n");
-      break;
-    default:
-      perror("Invalid operation mode! \n");
-      exit(EXIT_FAILURE);
-  }*/
-
   // -l --> LocalHost
   // -n --> client and server in the same NETWORK
   // -i --> client in the same LAN and server outside
@@ -108,11 +96,14 @@ int main(int argc, char *argv[]) {
     network_config = argv[2][1];
   }
 
+  /*
   data_packet = (Data_packet *)calloc(1, sizeof(Data_packet));
   if(!data_packet){
     perror("Error allocating memory for data_packet! \n");
     exit(EXIT_FAILURE);
-  }
+  } */
+
+  data_packet = init_data_packet();
   
   printf("Operation mode: %c. Network config: %c \n", op_mode, network_config);
 
@@ -125,7 +116,7 @@ int main(int argc, char *argv[]) {
     case 'l':
       strncpy(ip_client, "10.0.0.2", INET_ADDRSTRLEN);
       strncpy(ip_server, "10.0.0.1", INET_ADDRSTRLEN); 
-      printf("LocalHost/Cavo Diretto configuration selected \n");
+      printf("LocalHost/Lan configuration selected \n");
       break;
     case 'n':
       get_network_info(my_ip, gateway_ip);
@@ -320,6 +311,47 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
           return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
         }
 
+        if(data_packet == NULL){
+          fprintf(stderr, "Error: data_packet is NULL! \n");
+          exit(EXIT_FAILURE);
+        }
+
+        if(payload_len > data_packet->capacity){
+          size_t new_capacity = data_packet->capacity * 2;
+          while(new_capacity < payload_len) {
+            new_capacity *= 2;
+          }
+
+          data_packet->packet = (Byte *)realloc(data_packet->packet, new_capacity * sizeof(Byte));
+          
+          if(data_packet->packet == NULL){
+              perror("Errore realloc su data_packet->packet!\n");
+              exit(EXIT_FAILURE);
+          }
+
+          //capacity is size_t not a pointer
+          data_packet->capacity = new_capacity; 
+
+        }
+
+        memcpy(data_packet->packet, payload, payload_len); 
+        data_packet->len = payload_len;
+
+        data_packet->ip_header = (struct iphdr *)data_packet->packet;
+        data_packet->ip_header_len = iphdr_size;
+
+        data_packet->tcp_header = (struct tcphdr *)(data_packet->packet + iphdr_size);
+        data_packet->tcp_header_len = tcphdr_size;
+
+        data_packet->data = (Byte *)(data_packet->packet + iphdr_size + tcphdr_size);
+        data_packet->data_len = application_payload_size;
+
+        
+        /* modifiche da fare: data_packet va allocato una sola volta all'inizio del programma, successivamente viene solamente sovrascritto il contenuto*/
+        // da data packet ho lasciato solamente allocazione di memoria del pacchetto ed i vari componenti puntano all'inizio della loro parte
+        /*
+
+      
         if(data_packet->packet != NULL){
           free(data_packet->packet);
           data_packet->packet = NULL;
@@ -374,7 +406,11 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
           exit(EXIT_FAILURE);
         }
         memcpy(data_packet->data, application_payload, application_payload_size);
-        data_packet->data_len = application_payload_size;
+        data_packet->data_len = application_payload_size; */
+
+        
+
+
 
         attack = true;
         pthread_cond_signal(&attack_thread_cond);
@@ -528,8 +564,6 @@ unsigned short recalculate_checksum(){
   sum += htons(tcp_total_len) & 0xFFFF;
   sum += htons(IPPROTO_TCP) & 0xFFFF;
 
-  //__be16 is like unsigned short but tells us that is in network byte order (we don't need htons())
-
   unsigned short *ptr = (unsigned short *)data_packet->tcp_header;
   int byte_left = ((int)(data_packet->tcp_header_len));
 
@@ -654,6 +688,7 @@ void *do_attack_thread(void *arg){
         perror("Error allocating memory for original_packet! \n");
         exit(EXIT_FAILURE);
       }
+
       allocate_packet(data_packet, original_packet);
       allocated = true;
     }

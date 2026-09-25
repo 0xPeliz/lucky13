@@ -41,6 +41,14 @@ void signals_handler(int signal){
     free(active_interface); 
   }
 
+  extern Data_packet *data_packet;
+  if(data_packet != NULL){
+    if(data_packet->packet != NULL){
+      free(data_packet->packet);
+    }
+    free(data_packet);
+  }
+
   exit(0);
 }
 
@@ -240,6 +248,8 @@ char *get_server_interface(const char *server_ip, const int server_port){
   return interface_name;
 }
 
+
+/*
 //function to clone a data packet struct (original packet) in an another data_packet (it just clone information, it doesn't allocate memory for the new packet and its fields)
 void clone_packet(const Data_packet *original_packet, Data_packet *cloned_packet){
   
@@ -254,9 +264,10 @@ void clone_packet(const Data_packet *original_packet, Data_packet *cloned_packet
 
   memcpy(cloned_packet->data, original_packet->data, sizeof(Byte) * original_packet->data_len);
   cloned_packet->data_len = original_packet->data_len;
-}
+}*/
 
 //function to allocate memory for a new data_packet taking lengths from another created data_packet (original_packet)
+/*
 void allocate_packet(const Data_packet *original_packet, Data_packet *new_packet){
   printf("Sono prima della malloc in allocate_packet! \n");
   new_packet->packet = (Byte *)malloc(sizeof(Byte) * original_packet->len);
@@ -283,5 +294,71 @@ void allocate_packet(const Data_packet *original_packet, Data_packet *new_packet
     exit(EXIT_FAILURE);
   }
 
+}*/
+
+//allocate mamory for clone packet and its fields, taking lengths from another created data_packet (original_packet)
+void allocate_packet(const Data_packet *original_packet, Data_packet *new_packet){
+  if(original_packet == NULL || new_packet == NULL){
+    fprintf(stderr, "Error: original_packet or new_packet is NULL! \n");
+    exit(EXIT_FAILURE);
+  }
+
+  new_packet->packet = (Byte *)malloc(sizeof(Byte) * INITIAL_PACKET_CAPACITY);
+  if(new_packet->packet == NULL){
+    perror("New packet allocating error!");
+    exit(EXIT_FAILURE);
+  }
+
+  new_packet->capacity = INITIAL_PACKET_CAPACITY;
+
+}
+
+//function to clone a packet into the allocated space (allocated with allocate_pachet)
+void clone_packet(const Data_packet *original_packet, Data_packet *clone_packet){
+
+  if(original_packet == NULL || clone_packet == NULL){
+    fprintf(stderr, "Error: original_packet or clone_packet is NULL! \n");
+    exit(EXIT_FAILURE);
+  }
+
+  memcpy(clone_packet->packet, original_packet->packet, original_packet->len);
+  clone_packet->len = original_packet->len;
+
+  clone_packet->ip_header_len = original_packet->ip_header_len;
+  clone_packet->tcp_header_len = original_packet->tcp_header_len;
+  clone_packet->data_len = original_packet->data_len;
+
+  clone_packet->ip_header = (struct iphdr *)clone_packet->packet;
+  clone_packet->tcp_header = (struct tcphdr *)(clone_packet->packet + clone_packet->ip_header_len);
+  clone_packet->data = (Byte *)(clone_packet->packet + clone_packet->ip_header_len + clone_packet->tcp_header_len); 
+  
+}
+
+
+Data_packet *init_data_packet(){
+  Data_packet *data_packet = (Data_packet *)malloc(sizeof(Data_packet));
+  if(data_packet == NULL){
+    fprintf(stderr, "Error: data packet init malloc is NULL! \n");
+    exit(EXIT_FAILURE);
+  }
+
+  data_packet->packet = (Byte *)malloc(sizeof(Byte) * INITIAL_PACKET_CAPACITY);
+  if(data_packet->packet == NULL){
+    fprintf(stderr, "Error: data packet init malloc is NULL! \n");
+    exit(EXIT_FAILURE);
+  }
+
+  data_packet->capacity = INITIAL_PACKET_CAPACITY;
+
+  data_packet->ip_header = NULL;
+  data_packet->tcp_header = NULL;
+  data_packet->data = NULL;
+
+  data_packet->ip_header_len = 0;
+  data_packet->tcp_header_len = 0;
+  data_packet->data_len = 0;
+
+
+  return data_packet;
 }
 
