@@ -3,6 +3,8 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
+
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
@@ -13,20 +15,24 @@
 
 #define L_SIZE 50000
 #define data_dimension 341 // before it was 85 bytes (only one block of data), now it is 341 bytes
+#define INITIAL_PACKET_CAPACITY 4096
+#define BLOCK_DIM 16
 
 typedef unsigned char Byte;
 
 typedef struct Data_packet{
   Byte *packet;
-  unsigned int len;
+  size_t len;
+  size_t capacity; //how much memory is allocated for the packet (to prevent a lot of malloc and free calls)
+
   struct iphdr *ip_header;
-  unsigned int ip_header_len;
+  size_t ip_header_len;
+
   struct tcphdr *tcp_header;
-  unsigned int tcp_header_len;
+  size_t tcp_header_len;
+
   Byte *data;
-  unsigned int data_len;
-  //unsigned int header_data_len; //num of byte of header for data
-  //unsigned int real_data_len; //num of real data byte
+  size_t data_len;
 }Data_packet;
 
 //struct to pass the measurements to the python script for the last and penultimate bytes attack
@@ -59,5 +65,6 @@ Byte *xor_block(Byte *block1, Byte *block2, unsigned int len);
 void modify_last_bytes(Data_packet *data_packet, int block_pos, int val_penultimate_byte, int val_last_byte);
 
 char *get_server_interface(const char *server_ip, const int server_port);
+Data_packet *init_data_packet();
 
 #endif

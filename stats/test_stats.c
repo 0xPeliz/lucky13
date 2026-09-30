@@ -7,7 +7,7 @@
 
 int main(){
 
-    printf("[TEST] Test inizializzazione ambiente Python \n");
+    printf("[PYTHON] test inizializzazione ambiente Python \n");
     init_python_environment();
 
     //alloca ad inizializza la struct dell'attacco con dati fittizi
@@ -24,17 +24,17 @@ int main(){
         attack_res.time_meas[byte_segreto][j] = 5000 + j; // Spike di latenza
     }
 
-    printf("[TEST] Dati generati. Lancio l'analisi statistica (cercando un'anomalia a 0x42)...\n");
+    printf("[PYTHON] Dati generati. Lancio dell'analisi statistica\n");
     
     // Chiama la funzione C che invoca Python
     int risultato = analyze_single_byte(&attack_res);
 
-    printf("[TEST] L'analizzatore Python ha restituito il byte: 0x%02x\n", risultato);
+    printf("[PYTHON] L'analizzatore Python ha restituito il byte: 0x%02x\n", risultato);
     
     if (risultato == byte_segreto) {
-        printf("\x1b[32m[SUCCESSO] L'integrazione C-Python funziona perfettamente!\x1b[0m\n");
+        printf("\x1b[32m byte trovato correttamente \x1b[0m\n");
     } else {
-        printf("\x1b[31m[ERRORE] Il risultato non coincide con l'anomalia inserita.\x1b[0m\n");
+        printf("\x1b[31m il risultato non coincide con l'anomalia inserita\x1b[0m\n");
     }
 
     printf("[TEST] Chiusura ambiente Python...\n");

