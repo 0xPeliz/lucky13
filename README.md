@@ -21,6 +21,7 @@ This repository reproduces the attack against OpenSSL 1.0.1c, which predates the
 
 ## Project Structure
 
+```
 ├── attacker/           # Contains all the proxy source files and headers
 ├── client.c            # Client that simulates a browser with a malware
 ├── newclient.c         # Modified client just for particular testing
@@ -32,7 +33,7 @@ This repository reproduces the attack against OpenSSL 1.0.1c, which predates the
 ├── script.py           # Just to generate the cookie for the client
 ├── build.sh            #
 └── build-outside.sh    # 
-
+```
 
 ## Table of contents
 
