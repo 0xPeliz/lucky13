@@ -14,12 +14,12 @@ This project provides a proof-of-concept exploit to test and verify the CVE-2013
 **This project is created exclusively for educational and security research purpose. Do not use this tool on systems for which you don't have explicit permission. The author is not responsable for any misuse.**
 
 
-## Background
+## 📖 Background
 Lucky 13 was published by AlFardan and Paterson in 2013. It exploits small timing differences in how TLS/DTLS implementations process CBC-padded records.
 This repository reproduces the attack against OpenSSL 1.0.1c, which predates the fix. 
 
 
-## Project Structure
+## 📂 Project Structure
 
 ```
 ├── attacker/           # Contains all the proxy source files and headers
@@ -31,24 +31,24 @@ This repository reproduces the attack against OpenSSL 1.0.1c, which predates the
 ├── config/             # Contains all the files for Docker Network testing
 ├── stats/              # Contains statistical analysis tools
 ├── script.py           # Just to generate the cookie for the client
-├── build.sh            #
-└── build-outside.sh    # 
+├── build.sh            # Generates the certificates needed for localhost testing
+└── build-outside.sh    # Generates the certificates needed for LAN testing
 ```
 
-## Table of contents
+## 📑 Table of contents
 
 - [Features](#features)
 - [Dependencies](#dependencies)
 - [How to use](#how-to-use)
 - [License](#license)
 
-## Features
+## ✨ Features
 
 - Self-contained lab setup: client, server and attacker components
 - Attacker acts as a proxy between a simulated browser and the TLS server
 - Runs against a bundled, vulnerable OpenSSL 1.0.1c
 
-## Dependencies
+## 📦 Dependencies
 
 - Linux based operating system
 - gcc, build-essentials, make
@@ -58,7 +58,7 @@ This repository reproduces the attack against OpenSSL 1.0.1c, which predates the
 - Root privilege on the host that executes proxy
 
 
-## How to use
+## 🚀 How to use
 
 #### 1. Clone the repo and go inside the cloned directory
 ```bash
@@ -109,7 +109,7 @@ This repository reproduces the attack against OpenSSL 1.0.1c, which predates the
 ```
 
 
-## License
+## 📜 License
 
 This project is released under the MIT License. See [LICENSE](LICENSE) for details.
 
